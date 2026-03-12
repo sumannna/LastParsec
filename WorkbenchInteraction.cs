@@ -25,10 +25,12 @@ public class WorkbenchInteraction : MonoBehaviour
     {
         if (!IsPlayerInRange()) return;
 
-        // Eキーでクラフトツリー画面を開く
         if (Input.GetKeyDown(KeyCode.E))
         {
-            OpenCraftTree();
+            if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen)
+                CraftTreeUI.Instance.Close();
+            else
+                OpenCraftTree();
         }
     }
 

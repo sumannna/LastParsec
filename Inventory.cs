@@ -266,8 +266,13 @@ public class Inventory : MonoBehaviour
     {
         int total = 0;
         for (int i = 0; i < slotCount; i++)
+        {
+            if (slots[i] != null)
+                Debug.Log($"[Slot{i}] {slots[i].item?.name}({slots[i].item?.GetInstanceID()}) x{slots[i].amount}");
             if (slots[i] != null && slots[i].item == item)
                 total += slots[i].amount;
+        }
+        Debug.Log($"[GetAmount] 検索:{item?.name}({item?.GetInstanceID()}) 結果:{total}");
         return total;
     }
 }

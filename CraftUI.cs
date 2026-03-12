@@ -28,16 +28,23 @@ public class CraftUI : MonoBehaviour
     public TextMeshProUGUI craftTimeText;       // クラフト時間表示
 
     [Header("クラフト実行")]
-    public Slider progressBar;                  // 進捗バー（0〜1）
-    public Button craftButton;                  // クラフトボタン
-    public Button cancelButton;                 // キャンセルボタン
-    public TMP_InputField countInput;           // 個数入力
+    public Image progressBarImage;          // FillAmount方式のImage
+    public TextMeshProUGUI remainingTimeText; // 残り秒数テキスト
+    public GameObject progressBarRoot;      // ゲージ全体の親（表示切替用）
+    public Button craftButton;
+    public Button cancelButton;
+    public TMP_InputField countInput;
 
     [Header("参照")]
     public Inventory playerInventory;
     public InventoryUI inventoryUI;
     public OxygenSystem oxygenSystem;
     public VitalSystem vitalSystem;
+
+    [Header("個数操作")]
+    public Button incrementButton;   // 右矢印（+1）
+    public Button decrementButton;   // 左矢印（-1）
+    public Button maxButton;         // MAX
 
     private bool isOpen = false;
     private RecipeData selectedRecipe = null;
@@ -60,6 +67,13 @@ public class CraftUI : MonoBehaviour
     {
         craftPanel.SetActive(false);
 
+        if (incrementButton != null)
+            incrementButton.onClick.AddListener(OnIncrementPressed);
+        if (decrementButton != null)
+            decrementButton.onClick.AddListener(OnDecrementPressed);
+        if (maxButton != null)
+            maxButton.onClick.AddListener(OnMaxPressed);
+
         if (craftButton != null)
             craftButton.onClick.AddListener(OnCraftButtonPressed);
         if (cancelButton != null)
@@ -70,8 +84,7 @@ public class CraftUI : MonoBehaviour
             countInput.text = "1";
             countInput.onEndEdit.AddListener(OnCountInputChanged);
         }
-        if (progressBar != null)
-            progressBar.value = 0f;
+        SetProgressVisible(false);
     }
 
     // -----------------------------------------------
@@ -115,8 +128,15 @@ public class CraftUI : MonoBehaviour
         // クラフト中のプログレスバー更新
         if (isOpen && CraftSystem.Instance != null && CraftSystem.Instance.IsCrafting)
         {
-            if (progressBar != null)
-                progressBar.value = CraftSystem.Instance.Progress;
+            float progress = CraftSystem.Instance.Progress;
+            if (progressBarImage != null)
+                progressBarImage.rectTransform.localScale = new Vector3(progress, 1f, 1f);
+
+            if (remainingTimeText != null && CraftSystem.Instance.CurrentRecipe != null)
+            {
+                float remaining = CraftSystem.Instance.CurrentRecipe.craftTime * (1f - progress);
+                remainingTimeText.text = $"{remaining:F1}";
+            }
         }
     }
 
@@ -159,6 +179,7 @@ public class CraftUI : MonoBehaviour
         Cursor.visible = false;
 
         selectedRecipe = null;
+        ResetCraftCount();
         ClearDetail();
     }
 
@@ -206,6 +227,7 @@ public class CraftUI : MonoBehaviour
     void SelectRecipe(RecipeData recipe)
     {
         selectedRecipe = recipe;
+        ResetCraftCount();
         ShowDetail(recipe);
     }
 
@@ -300,13 +322,19 @@ public class CraftUI : MonoBehaviour
         bool started = CraftSystem.Instance.StartCraft(selectedRecipe, craftCount);
         if (started)
         {
-            if (progressBar != null) progressBar.value = 0f;
+            SetProgressVisible(true);
             UpdateCraftButton();
 
-            // クラフト完了・キャンセルのイベントを購読
             CraftSystem.Instance.OnCraftFinished += OnCraftFinished;
             CraftSystem.Instance.OnCraftCancelled += OnCraftCancelled;
+            CraftSystem.Instance.OnCraftCompleted += OnCraftUnitCompleted;
         }
+    }
+
+    void OnCraftUnitCompleted(RecipeData recipe)
+    {
+        // 素材の所持数表示を更新
+        if (selectedRecipe != null) ShowDetail(selectedRecipe);
     }
 
     void OnCancelButtonPressed()
@@ -319,22 +347,22 @@ public class CraftUI : MonoBehaviour
     {
         if (!int.TryParse(value, out int parsed) || parsed < 1)
             parsed = 1;
-        craftCount = parsed;
+        craftCount = Mathf.Clamp(parsed, 1, GetMaxCraftCount());
         if (countInput != null) countInput.text = craftCount.ToString();
     }
 
     void OnCraftFinished()
     {
+        SetProgressVisible(false);
         UnsubscribeCraftEvents();
-        if (progressBar != null) progressBar.value = 0f;
         RefreshRecipeList();
         if (selectedRecipe != null) ShowDetail(selectedRecipe);
     }
 
     void OnCraftCancelled()
     {
+        SetProgressVisible(false);
         UnsubscribeCraftEvents();
-        if (progressBar != null) progressBar.value = 0f;
         UpdateCraftButton();
     }
 
@@ -343,6 +371,58 @@ public class CraftUI : MonoBehaviour
         if (CraftSystem.Instance == null) return;
         CraftSystem.Instance.OnCraftFinished -= OnCraftFinished;
         CraftSystem.Instance.OnCraftCancelled -= OnCraftCancelled;
+        CraftSystem.Instance.OnCraftCompleted -= OnCraftUnitCompleted;
+    }
+
+    void OnIncrementPressed()
+    {
+        int max = GetMaxCraftCount();
+        craftCount = Mathf.Min(craftCount + 1, max);
+        UpdateCountInput();
+    }
+
+    int GetMaxCraftCount()
+    {
+        if (selectedRecipe == null) return 1;
+
+        int max = int.MaxValue;
+        foreach (var ingredient in selectedRecipe.ingredients)
+        {
+            if (ingredient.count <= 0) continue;
+            int canMake = playerInventory.GetAmount(ingredient.item) / ingredient.count;
+            max = Mathf.Min(max, canMake);
+        }
+        return Mathf.Max(1, max == int.MaxValue ? 1 : max);
+    }
+
+    void OnDecrementPressed()
+    {
+        craftCount = Mathf.Max(1, craftCount - 1);
+        UpdateCountInput();
+    }
+
+    void OnMaxPressed()
+    {
+        craftCount = GetMaxCraftCount();
+        UpdateCountInput();
+    }
+
+    void UpdateCountInput()
+    {
+        if (countInput != null)
+            countInput.text = craftCount.ToString();
+    }
+
+    void ResetCraftCount()
+    {
+        craftCount = 1;
+        UpdateCountInput();
+    }
+
+    void SetProgressVisible(bool visible)
+    {
+        if (progressBarRoot != null)
+            progressBarRoot.SetActive(visible);
     }
 
     // -----------------------------------------------

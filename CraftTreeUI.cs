@@ -229,29 +229,34 @@ public class CraftTreeUI : MonoBehaviour
 
         // アイコン設定
         Image icon = FindChild<Image>(obj, "NodeIcon");
+        Image lockOverlay = FindChild<Image>(obj, "LockOverlay");
+        if (lockOverlay != null)
+            lockOverlay.raycastTarget = false;
+
+        Debug.Log($"[CraftTreeUI] icon={icon?.gameObject.name} node={node.nodeId} nodeIcon={node.nodeIcon?.name}");
         if (icon != null)
         {
-            if (node.isUnlocked)
-            {
-                // 解放済み：アイテムアイコン表示
+                icon.raycastTarget = false;
                 icon.sprite = node.nodeIcon;
-                icon.color = node.nodeIcon != null ? Color.white : Color.gray;
-            }
-            else
-            {
-                // 未解放：鍵アイコン表示
-                icon.sprite = lockSprite;
-                icon.color = new Color(0.6f, 0.6f, 0.6f, 1f);
-            }
         }
-
-        // 解放済みは枠を強調（青枠）
-        Image bg = obj.GetComponent<Image>();
-        if (bg != null)
+            
+        if (node.isUnlocked)
         {
-            bg.color = node.isUnlocked
-                ? new Color(0.2f, 0.4f, 0.8f, 1f)   // 解放済み：青
-                : new Color(0.2f, 0.2f, 0.2f, 1f);   // 未解放：暗い灰
+            // 解放済：通常表示
+            if (icon != null) icon.color = Color.white;
+            if (lockOverlay != null) lockOverlay.gameObject.SetActive(false);
+        }
+        else if (ArePrerequisitesMet(node))
+        {
+            // 前提条件は満たしている：暗い灰
+            if (icon != null) icon.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+            if (lockOverlay != null) lockOverlay.gameObject.SetActive(false);
+        }
+        else
+        {
+            // 前提条件未達成：暗い灰＋鍵マーク
+            if (icon != null) icon.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+            if (lockOverlay != null) lockOverlay.gameObject.SetActive(true);
         }
 
         // クリックで詳細表示
@@ -259,8 +264,22 @@ public class CraftTreeUI : MonoBehaviour
         Button btn = obj.GetComponent<Button>();
         if (btn == null) btn = obj.AddComponent<Button>();
         btn.onClick.AddListener(() => SelectNode(capturedNode));
+        Debug.Log($"[CraftTreeUI] Button登録: {obj.name} listeners={btn.onClick.GetPersistentEventCount()}");
 
         obj.name = $"Node_{node.nodeId}";
+    }
+
+    bool ArePrerequisitesMet(CraftTreeNode node)
+    {
+        if (node.prerequisites == null || node.prerequisites.Count == 0)
+            return true;
+        foreach (var prereqId in node.prerequisites)
+        {
+            var prereqNode = currentTreeData.nodes.Find(n => n.nodeId == prereqId);
+            if (prereqNode == null || !prereqNode.isUnlocked)
+                return false;
+        }
+        return true;
     }
 
     void CreateLine(Vector2 from, Vector2 to)
@@ -300,6 +319,7 @@ public class CraftTreeUI : MonoBehaviour
 
     void SelectNode(CraftTreeNode node)
     {
+        Debug.Log($"[CraftTreeUI] SelectNode: {node?.nodeId}");
         selectedNode = node;
         ShowDetail(node);
     }

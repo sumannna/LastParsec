@@ -57,7 +57,8 @@ public class PlayerController : MonoBehaviour
                    || (vitalSystem != null && vitalSystem.IsDead);
 
         bool inventoryOpen = (inventoryUI != null && inventoryUI.IsOpen)
-                  || (CraftUI.Instance != null && CraftUI.Instance.IsOpen);
+          || (CraftUI.Instance != null && CraftUI.Instance.IsOpen)
+          || (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen);
 
         float mouseX = Input.GetAxisRaw("Mouse X") * mouseSensitivity;
         float mouseY = Input.GetAxisRaw("Mouse Y") * mouseSensitivity;
