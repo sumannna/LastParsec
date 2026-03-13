@@ -531,11 +531,25 @@ public class ItemDragHandler : MonoBehaviour,
         if ((inventorySlot != null || equipmentSlotData != null) && !wasHotbarDrag)
             ShowSourceVisuals();
 
+        var results = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(eventData, results);
+
+        Debug.Log($"[ItemDragHandler] OnEndDrag resultsCount={results.Count}");
+
+        foreach (var result in results)
+        {
+            Debug.Log(
+                $"[ItemDragHandler] hit={result.gameObject.name}, " +
+                $"drop={result.gameObject.GetComponent<DropHandler>() != null}, " +
+                $"equipDrop={result.gameObject.GetComponent<EquipmentDropHandler>() != null}, " +
+                $"researchDrop={result.gameObject.GetComponent<ResearchBlueprintHandler>() != null}"
+            );
+        }
+
         wasHotbarDrag = false;
 
         if (IsHotbarDrag())
         {
-            // ドロップ先がなかった場合（キャンセル）はホットバーUIを更新
             if (hotbarUI != null) hotbarUI.RefreshAll();
             return;
         }
@@ -543,8 +557,15 @@ public class ItemDragHandler : MonoBehaviour,
         if (IsInventoryDrag())
         {
             if (inventorySlot == null) return;
+
             bool overUI = IsPointerOverInventoryOrEquipment(eventData);
-            if (!overUI) DropToWorld();
+            Debug.Log($"[ItemDragHandler] OnEndDrag overUI={overUI}, item={(inventorySlot.item != null ? inventorySlot.item.itemName : "null")}, amount={inventorySlot.amount}");
+
+            if (!overUI)
+            {
+                Debug.Log("[ItemDragHandler] DropToWorld 実行");
+                DropToWorld();
+            }
         }
     }
 
@@ -564,12 +585,16 @@ public class ItemDragHandler : MonoBehaviour,
         foreach (var result in results)
         {
             string n = result.gameObject.name;
+
             if (n == "InventoryPanel" || n == "Content" || n == "SlotPrefab(Clone)" ||
                 n == "Viewport" || n == "SlotGrid" || n == "EquipmentPanel" ||
-                n == "EquipmentSlotPrefab(Clone)")
+                n == "EquipmentSlotPrefab(Clone)" || n == "ResearchPanel" ||
+                n == "BlueprintSlot")
                 return true;
+
             if (result.gameObject.GetComponent<DropHandler>() != null) return true;
             if (result.gameObject.GetComponent<EquipmentDropHandler>() != null) return true;
+            if (result.gameObject.GetComponent<ResearchBlueprintHandler>() != null) return true;
         }
         return false;
     }

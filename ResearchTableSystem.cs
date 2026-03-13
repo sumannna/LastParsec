@@ -12,7 +12,6 @@ using TMPro;
 /// </summary>
 public class ResearchTableSystem : MonoBehaviour
 {
-    public static ResearchTableSystem Instance { get; private set; }
     public bool IsOpen => isOpen;
 
     [Header("設定")]
@@ -35,7 +34,7 @@ public class ResearchTableSystem : MonoBehaviour
     [Header("リサーチ実行")]
     [SerializeField] private Button researchButton;
     [SerializeField] private TextMeshProUGUI researchButtonText;
-    [SerializeField] private Slider progressBar;
+    [SerializeField] private Image progressBar;
 
     [Header("参照")]
     [SerializeField] private Transform playerTransform;
@@ -55,8 +54,6 @@ public class ResearchTableSystem : MonoBehaviour
 
     void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
     }
 
     void Start()
@@ -64,8 +61,11 @@ public class ResearchTableSystem : MonoBehaviour
         if (researchPanel != null) researchPanel.SetActive(false);
         if (closeButton != null) closeButton.onClick.AddListener(ClosePanel);
         if (researchButton != null) researchButton.onClick.AddListener(OnResearchButtonPressed);
-        if (progressBar != null) progressBar.value = 0f;
-        ClearSlot();
+        if (progressBar != null)
+            progressBar.rectTransform.sizeDelta = new Vector2(0f, progressBar.rectTransform.sizeDelta.y);
+
+        currentBlueprint = null;
+        UpdateUI();
     }
 
     // -----------------------------------------------
@@ -97,9 +97,15 @@ public class ResearchTableSystem : MonoBehaviour
             return;
         }
 
-        // プログレスバー更新
         if (isOpen && IsResearching && progressBar != null)
-            progressBar.value = currentProgress;
+        {
+            RectTransform bar = progressBar.rectTransform;
+            RectTransform bg = progressBar.transform.parent.GetComponent<RectTransform>();
+
+            float maxWidth = bg.rect.width;
+
+            bar.sizeDelta = new Vector2(maxWidth * currentProgress, bar.sizeDelta.y);
+        }
     }
 
     // -----------------------------------------------
@@ -114,12 +120,20 @@ public class ResearchTableSystem : MonoBehaviour
 
     void OpenPanel()
     {
+        Debug.Log($"[ResearchTable] OpenPanel obj={gameObject.name} id={GetInstanceID()} current={(currentBlueprint != null ? currentBlueprint.itemName : "null")}");
+
+        var dropHandler = blueprintSlotIcon != null
+            ? blueprintSlotIcon.GetComponentInParent<ResearchBlueprintHandler>()
+            : null;
+
+        if (dropHandler != null)
+            dropHandler.SetResearchTable(this);
+
         isOpen = true;
         researchPanel.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        // インベントリを同時に開く
         if (inventoryUI != null && !inventoryUI.IsOpen)
             inventoryUI.OpenInventoryExternal();
 
@@ -128,6 +142,8 @@ public class ResearchTableSystem : MonoBehaviour
 
     public void ClosePanel()
     {
+        Debug.Log($"[ResearchTable] ClosePanel obj={gameObject.name} id={GetInstanceID()} before current={(currentBlueprint != null ? currentBlueprint.itemName : "null")}");
+
         if (IsResearching) CancelResearch();
 
         isOpen = false;
@@ -137,6 +153,8 @@ public class ResearchTableSystem : MonoBehaviour
 
         if (inventoryUI != null && inventoryUI.IsOpen)
             inventoryUI.CloseInventory();
+
+        Debug.Log($"[ResearchTable] ClosePanel obj={gameObject.name} id={GetInstanceID()} after current={(currentBlueprint != null ? currentBlueprint.itemName : "null")}");
     }
 
     // -----------------------------------------------
@@ -148,7 +166,7 @@ public class ResearchTableSystem : MonoBehaviour
     /// </summary>
     public bool TrySetBlueprint(Inventory.Slot slot)
     {
-        Debug.Log("[ResearchTable] TrySetBlueprint 開始");
+        Debug.Log($"[ResearchTable] TrySetBlueprint obj={gameObject.name} id={GetInstanceID()} current={(currentBlueprint != null ? currentBlueprint.itemName : "null")}");
 
         if (slot == null || slot.item == null)
         {
@@ -162,24 +180,37 @@ public class ResearchTableSystem : MonoBehaviour
             return false;
         }
 
+        Debug.Log($"[ResearchTable] セット候補={bp.itemName}, slotAmountBefore={slot.amount}");
+
         if (IsResearching)
         {
             Debug.Log("[ResearchTable] 研究中のためセット不可");
             return false;
         }
 
+        if (currentBlueprint != null)
+        {
+            Debug.Log($"[ResearchTable] 既存BP返却開始 old={currentBlueprint.itemName}");
+            bool returned = playerInventory.AddItem(currentBlueprint);
+            Debug.Log($"[ResearchTable] 既存BP返却結果 returned={returned}");
+
+            if (!returned)
+            {
+                Debug.Log("[ResearchTable] 返却失敗で中断");
+                return false;
+            }
+        }
+
         currentBlueprint = bp;
-        Debug.Log($"[ResearchTable] currentBlueprint 設定={currentBlueprint.itemName}, iconNull={(currentBlueprint.icon == null)}");
+        playerInventory.ReduceSlot(slot, 1);
+
+        Debug.Log($"[ResearchTable] 新規セット完了 obj={gameObject.name} id={GetInstanceID()} current={currentBlueprint.itemName}, slotAmountAfter={slot.amount}");
+
+        if (inventoryUI != null && inventoryUI.IsOpen)
+            inventoryUI.RefreshAll();
 
         UpdateUI();
         return true;
-    }
-
-    public void ClearSlot()
-    {
-        if (IsResearching) return;
-        currentBlueprint = null;
-        UpdateUI();
     }
 
     // -----------------------------------------------
@@ -189,23 +220,20 @@ public class ResearchTableSystem : MonoBehaviour
     void UpdateUI()
     {
         bool hasBlueprint = currentBlueprint != null;
-
+        Debug.Log($"[ResearchTable] UpdateUI hasBlueprint={hasBlueprint}, current={(currentBlueprint != null ? currentBlueprint.itemName : "null")}");
         // スロット表示
         if (blueprintSlotIcon != null)
         {
             blueprintSlotIcon.sprite = hasBlueprint ? currentBlueprint.icon : null;
             blueprintSlotIcon.color = hasBlueprint && currentBlueprint.icon != null
                 ? Color.white : Color.clear;
-
-            Debug.Log($"[ResearchTable] UpdateUI hasBlueprint={hasBlueprint}, iconNull={(hasBlueprint ? currentBlueprint.icon == null : true)}, color={blueprintSlotIcon.color}");
-        }
-        else
-        {
-            Debug.Log("[ResearchTable] blueprintSlotIcon が null");
         }
 
         if (blueprintSlotText != null)
-            blueprintSlotText.text = hasBlueprint ? "" : "ここにBPをセット";
+        {
+            blueprintSlotText.text = hasBlueprint ? currentBlueprint.itemName : "ここにBPをセット";
+
+        }
 
         if (!hasBlueprint)
         {
@@ -227,10 +255,7 @@ public class ResearchTableSystem : MonoBehaviour
             foreach (Transform child in costListParent)
                 Destroy(child.gameObject);
 
-            // ブループリント自体のコスト行
-            AddCostRow(currentBlueprint, 1);
-
-            // 追加コスト
+            // 追加コストのみ表示
             foreach (var cost in currentBlueprint.researchCosts)
                 AddCostRow(cost.item, cost.count);
         }
@@ -281,7 +306,7 @@ public class ResearchTableSystem : MonoBehaviour
             return;
         }
 
-        bool canResearch = currentBlueprint.CanResearch(playerInventory);
+        bool canResearch = CanResearchWithInsertedBlueprint();
         researchButton.interactable = canResearch && !IsResearching;
         if (researchButtonText != null)
             researchButtonText.text = canResearch ? "リサーチ開始" : "素材不足";
@@ -296,7 +321,8 @@ public class ResearchTableSystem : MonoBehaviour
                 Destroy(child.gameObject);
         if (researchButton != null) researchButton.interactable = false;
         if (researchButtonText != null) researchButtonText.text = "BPをセットしてください";
-        if (progressBar != null) progressBar.value = 0f;
+        if (progressBar != null)
+            progressBar.rectTransform.sizeDelta = new Vector2(0f, progressBar.rectTransform.sizeDelta.y);
     }
 
     // -----------------------------------------------
@@ -307,7 +333,7 @@ public class ResearchTableSystem : MonoBehaviour
     {
         if (currentBlueprint == null) return;
         if (IsResearching) return;
-        if (!currentBlueprint.CanResearch(playerInventory)) return;
+        if (!CanResearchWithInsertedBlueprint()) return;
 
         researchCoroutine = StartCoroutine(ResearchRoutine());
     }
@@ -337,14 +363,6 @@ public class ResearchTableSystem : MonoBehaviour
 
         var slots = playerInventory.GetSlots();
 
-        // ブループリント消費
-        for (int i = 0; i < slots.Length; i++)
-        {
-            if (slots[i] == null || slots[i].item != currentBlueprint) continue;
-            playerInventory.ReduceSlot(slots[i], 1);
-            break;
-        }
-
         // 追加コスト消費
         foreach (var cost in currentBlueprint.researchCosts)
         {
@@ -365,7 +383,10 @@ public class ResearchTableSystem : MonoBehaviour
         Debug.Log($"[ResearchTable] 完了：{currentBlueprint.targetRecipe?.itemResult?.itemName}");
 
         currentBlueprint = null;
-        if (progressBar != null) progressBar.value = 0f;
+
+        if (progressBar != null)
+            progressBar.rectTransform.sizeDelta = new Vector2(0f, progressBar.rectTransform.sizeDelta.y);
+
         UpdateUI();
     }
 
@@ -378,9 +399,69 @@ public class ResearchTableSystem : MonoBehaviour
         }
 
         currentProgress = 0f;
-        if (progressBar != null) progressBar.value = 0f;
+
+        if (progressBar != null)
+            progressBar.rectTransform.sizeDelta = new Vector2(0f, progressBar.rectTransform.sizeDelta.y);
+
         Debug.Log("[ResearchTable] キャンセル（消費なし）");
         UpdateUI();
+    }
+
+    bool CanResearchWithInsertedBlueprint()
+    {
+        if (currentBlueprint == null) return false;
+
+        foreach (var cost in currentBlueprint.researchCosts)
+        {
+            if (playerInventory.GetAmount(cost.item) < cost.count)
+                return false;
+        }
+
+        return true;
+    }
+
+    public bool TryTakeBlueprint()
+    {
+        if (currentBlueprint == null)
+        {
+            Debug.Log("[ResearchTable] 回収対象なし");
+            return false;
+        }
+
+        if (IsResearching)
+        {
+            Debug.Log("[ResearchTable] 研究中のため回収不可");
+            return false;
+        }
+
+        bool added = playerInventory.AddItem(currentBlueprint);
+        if (!added)
+        {
+            Debug.Log("[ResearchTable] インベントリ満杯で回収不可");
+            return false;
+        }
+
+        Debug.Log($"[ResearchTable] ブループリント回収={currentBlueprint.itemName}");
+
+        currentBlueprint = null;
+
+        if (inventoryUI != null && inventoryUI.IsOpen)
+            inventoryUI.RefreshAll();
+
+        UpdateUI();
+        return true;
+    }
+
+    public bool TryGetCurrentBlueprintName(out string name)
+    {
+        if (currentBlueprint == null)
+        {
+            name = null;
+            return false;
+        }
+
+        name = currentBlueprint.itemName;
+        return true;
     }
 
     // -----------------------------------------------

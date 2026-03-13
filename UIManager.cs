@@ -34,8 +34,12 @@ public class UIManager : MonoBehaviour
         if (craftUI != null && craftUI.IsOpen)
             craftUI.CloseCraft(cancel: true);
 
-        if (ResearchTableSystem.Instance != null && ResearchTableSystem.Instance.IsOpen)
-            ResearchTableSystem.Instance.ClosePanel();
+        var tables = FindObjectsOfType<ResearchTableSystem>();
+        foreach (var table in tables)
+        {
+            if (table != null && table.IsOpen)
+                table.ClosePanel();
+        }
 
         if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen)
             CraftTreeUI.Instance.Close();

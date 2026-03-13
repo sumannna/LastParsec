@@ -112,19 +112,25 @@ public class SlotClickHandler : MonoBehaviour, IPointerClickHandler
             return false;
         }
 
-        if (ResearchTableSystem.Instance == null)
+        var tables = FindObjectsOfType<ResearchTableSystem>();
+        ResearchTableSystem openTable = null;
+
+        foreach (var table in tables)
         {
-            Debug.Log("[SlotClickHandler] ResearchTableSystem.Instance が null");
+            if (table != null && table.IsOpen)
+            {
+                openTable = table;
+                break;
+            }
+        }
+
+        if (openTable == null)
+        {
+            Debug.Log("[SlotClickHandler] 開いているResearchTable がない");
             return false;
         }
 
-        if (!ResearchTableSystem.Instance.IsOpen)
-        {
-            Debug.Log("[SlotClickHandler] ResearchTable が閉じている");
-            return false;
-        }
-
-        bool success = ResearchTableSystem.Instance.TrySetBlueprint(inventorySlot);
+        bool success = openTable.TrySetBlueprint(inventorySlot);
         Debug.Log($"[SlotClickHandler] TrySetBlueprint 結果={success}");
 
         if (success)
