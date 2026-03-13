@@ -27,8 +27,7 @@ public class CraftTreeData : ScriptableObject
     {
         foreach (var prereqId in node.prerequisites)
         {
-            CraftTreeNode prereq = GetNode(prereqId);
-            if (prereq == null || !prereq.isUnlocked)
+            if (!km.IsNodeUnlocked(prereqId))
                 return false;
         }
         return true;
@@ -56,8 +55,8 @@ public class CraftTreeNode
     [Header("解放されるレシピ")]
     public List<RecipeData> unlockedRecipes = new List<RecipeData>();
 
-    [Header("状態（セーブ対象）")]
-    public bool isUnlocked = false;
+    // 解放状態はここでは持たない [Header("状態（セーブ対象）")]
+    // 解放状態はここでは持たない public bool isUnlocked = false;
 
     /// <summary>インベントリのアイテムが解放コストを満たすか確認</summary>
     public bool CanAfford(Inventory inventory)

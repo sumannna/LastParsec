@@ -5,7 +5,7 @@ using TMPro;
 
 /// <summary>
 /// WBのEキーで開くクラフトツリー画面。
-/// - ノードをアイコンで表示（解放済み：通常表示、未解放：鍵アイコン）
+/// - ノードをアイコンで表示（解放済み：通常表示、未解放：暗く表示）
 /// - ノード間をラインで接続
 /// - 右パネル：選択ノードの詳細・解放コスト・UNLOCKボタン
 /// </summary>
@@ -14,85 +14,96 @@ public class CraftTreeUI : MonoBehaviour
     public static CraftTreeUI Instance { get; private set; }
 
     [Header("UI")]
-    public GameObject treePanel;                // ツリー画面全体
-    public Transform nodeAreaParent;            // ノードを配置する親
-    public GameObject nodeSlotPrefab;           // ノード1枠のPrefab
-    public GameObject lineRendererPrefab;       // ノード間接続ライン（UI Image）
+    public GameObject treePanel;
+    public Transform nodeAreaParent;
+    public GameObject nodeSlotPrefab;
+    public GameObject lineRendererPrefab;
 
     [Header("右パネル：詳細")]
-    public Image detailIcon;                    // 選択ノードのアイコン
-    public TextMeshProUGUI detailNodeName;      // ノード名
-    public TextMeshProUGUI detailDescription;   // 解放されるレシピ一覧テキスト
-    public Transform unlockCostParent;          // 解放コスト一覧の親
-    public GameObject unlockCostSlotPrefab;     // コスト1行のPrefab
-    public Button unlockButton;                 // UNLOCKボタン
-    public TextMeshProUGUI unlockButtonText;    // ボタンテキスト
-    public Button closeButton;                  // CLOSEボタン
+    public Image detailIcon;
+    public TextMeshProUGUI detailNodeName;
+    public TextMeshProUGUI detailDescription;
+    public Transform unlockCostParent;
+    public GameObject unlockCostSlotPrefab;
+    public Button unlockButton;
+    public TextMeshProUGUI unlockButtonText;
+    public Button closeButton;
 
     [Header("鍵アイコン")]
-    public Sprite lockSprite;                   // 未解放ノードに表示する鍵画像
+    public Sprite lockSprite;
 
     [Header("参照")]
     public Inventory playerInventory;
     public OxygenSystem oxygenSystem;
     public VitalSystem vitalSystem;
 
-    // 現在表示中のツリーとWB
     private CraftTreeData currentTreeData;
     private WorkbenchInteraction currentWorkbench;
     private CraftTreeNode selectedNode;
 
-    // 生成したノードオブジェクトの管理
-    private List<GameObject> nodeObjects = new List<GameObject>();
-    private List<GameObject> lineObjects = new List<GameObject>();
+    private readonly List<GameObject> nodeObjects = new List<GameObject>();
+    private readonly List<GameObject> lineObjects = new List<GameObject>();
 
-    // ノード間隔設定
     private const float NodeSpacingX = 120f;
     private const float NodeSpacingY = 120f;
 
     public bool IsOpen { get; private set; }
 
-    // -----------------------------------------------
-    // 初期化
-    // -----------------------------------------------
-
     void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         Instance = this;
     }
 
     void Start()
     {
-        if (treePanel != null) treePanel.SetActive(false);
-        if (unlockButton != null) unlockButton.onClick.AddListener(OnUnlockButtonPressed);
-        if (closeButton != null) closeButton.onClick.AddListener(() => Close());
+        if (treePanel != null)
+            treePanel.SetActive(false);
+
+        if (unlockButton != null)
+            unlockButton.onClick.AddListener(OnUnlockButtonPressed);
+
+        if (closeButton != null)
+            closeButton.onClick.AddListener(Close);
     }
 
     void Update()
     {
-        if (!IsOpen) return;
+        if (!IsOpen)
+            return;
 
-        // Escキーで閉じる
         if (Input.GetKeyDown(KeyCode.Escape))
             Close();
 
-        // WBから離れたら強制終了
         if (currentWorkbench != null && !currentWorkbench.IsPlayerInRange())
             Close();
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            var eventData = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+            eventData.position = Input.mousePosition;
+
+            var results = new List<UnityEngine.EventSystems.RaycastResult>();
+            UnityEngine.EventSystems.EventSystem.current.RaycastAll(eventData, results);
+
+            Debug.Log($"[CraftTreeUI] UI Raycast 件数: {results.Count}");
+
+            for (int i = 0; i < results.Count; i++)
+            {
+                Debug.Log($"[CraftTreeUI] Hit[{i}] = {results[i].gameObject.name}");
+            }
+        }
     }
 
-    // -----------------------------------------------
-    // 公開API
-    // -----------------------------------------------
-
-    /// <summary>WorkbenchInteractionから呼ぶ</summary>
+    /// <summary>WorkbenchInteraction から呼ばれる</summary>
     public void Open(WorkbenchInteraction workbench)
     {
         currentWorkbench = workbench;
-
-        // WBレベルに対応するツリーデータを取得
-        // 複数ツリーがある場合は最初の1本を表示（後でタブ切り替えを追加可能）
         currentTreeData = FindTreeData(workbench.wbLevel);
 
         if (currentTreeData == null)
@@ -102,7 +113,10 @@ public class CraftTreeUI : MonoBehaviour
         }
 
         IsOpen = true;
-        treePanel.SetActive(true);
+
+        if (treePanel != null)
+            treePanel.SetActive(true);
+
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
@@ -113,41 +127,40 @@ public class CraftTreeUI : MonoBehaviour
     public void Close()
     {
         IsOpen = false;
-        if (treePanel != null) treePanel.SetActive(false);
+
+        if (treePanel != null)
+            treePanel.SetActive(false);
+
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
         currentWorkbench = null;
         currentTreeData = null;
         selectedNode = null;
+
         ClearNodes();
         ClearDetail();
     }
 
-    // -----------------------------------------------
-    // ツリーの描画
-    // -----------------------------------------------
-
     void BuildTree()
     {
         ClearNodes();
-        if (currentTreeData == null) return;
 
-        // ノードをグリッド状に配置（簡易レイアウト）
-        // 前提依存を深さ（列）と兄弟順（行）で配置
+        if (currentTreeData == null)
+            return;
+
         var depthMap = BuildDepthMap();
 
-        // 列ごとのノードリスト
         var columns = new Dictionary<int, List<CraftTreeNode>>();
         foreach (var kv in depthMap)
         {
             int depth = kv.Value;
             if (!columns.ContainsKey(depth))
                 columns[depth] = new List<CraftTreeNode>();
+
             columns[depth].Add(kv.Key);
         }
 
-        // 各ノードのUI位置を計算して生成
         var nodePositions = new Dictionary<string, Vector2>();
 
         foreach (var kv in columns)
@@ -167,13 +180,14 @@ public class CraftTreeUI : MonoBehaviour
             }
         }
 
-        // 接続ラインを描画
         foreach (var node in currentTreeData.nodes)
         {
+            if (node.prerequisites == null)
+                continue;
+
             foreach (var prereqId in node.prerequisites)
             {
-                if (nodePositions.ContainsKey(node.nodeId) &&
-                    nodePositions.ContainsKey(prereqId))
+                if (nodePositions.ContainsKey(node.nodeId) && nodePositions.ContainsKey(prereqId))
                 {
                     CreateLine(nodePositions[prereqId], nodePositions[node.nodeId]);
                 }
@@ -181,7 +195,6 @@ public class CraftTreeUI : MonoBehaviour
         }
     }
 
-    /// <summary>各ノードの深さ（列位置）を計算する</summary>
     Dictionary<CraftTreeNode, int> BuildDepthMap()
     {
         var depthMap = new Dictionary<CraftTreeNode, int>();
@@ -194,22 +207,25 @@ public class CraftTreeUI : MonoBehaviour
 
     int CalculateDepth(CraftTreeNode node, Dictionary<CraftTreeNode, int> depthMap)
     {
-        if (depthMap.ContainsKey(node)) return depthMap[node];
+        if (depthMap.ContainsKey(node))
+            return depthMap[node];
 
-        if (node.prerequisites.Count == 0)
+        if (node.prerequisites == null || node.prerequisites.Count == 0)
         {
             depthMap[node] = 0;
             return 0;
         }
 
         int maxPrereqDepth = 0;
+
         foreach (var prereqId in node.prerequisites)
         {
             CraftTreeNode prereq = currentTreeData.GetNode(prereqId);
             if (prereq != null)
             {
                 int d = CalculateDepth(prereq, depthMap);
-                if (d > maxPrereqDepth) maxPrereqDepth = d;
+                if (d > maxPrereqDepth)
+                    maxPrereqDepth = d;
             }
         }
 
@@ -219,268 +235,409 @@ public class CraftTreeUI : MonoBehaviour
 
     void CreateNodeObject(CraftTreeNode node, Vector2 position)
     {
-        if (nodeSlotPrefab == null) return;
+        if (nodeSlotPrefab == null || nodeAreaParent == null)
+            return;
 
         GameObject obj = Instantiate(nodeSlotPrefab, nodeAreaParent);
+        obj.name = $"Node_{node.nodeId}";
         nodeObjects.Add(obj);
 
         RectTransform rt = obj.GetComponent<RectTransform>();
-        if (rt != null) rt.anchoredPosition = position;
+        if (rt != null)
+            rt.anchoredPosition = position;
 
-        // アイコン設定
+        // ルートにraycastを受けるImageを必ず持たせる
+        Image rootImage = obj.GetComponent<Image>();
+        if (rootImage == null)
+            rootImage = obj.AddComponent<Image>();
+
+        rootImage.color = new Color(1f, 1f, 1f, 0.001f);
+        rootImage.raycastTarget = true;
+
+        // 子のGraphicは基本raycastを切る
+        Graphic[] graphics = obj.GetComponentsInChildren<Graphic>(true);
+        foreach (var g in graphics)
+        {
+            if (g.gameObject != obj)
+                g.raycastTarget = false;
+        }
+
         Image icon = FindChild<Image>(obj, "NodeIcon");
         Image lockOverlay = FindChild<Image>(obj, "LockOverlay");
-        if (lockOverlay != null)
-            lockOverlay.raycastTarget = false;
 
-        Debug.Log($"[CraftTreeUI] icon={icon?.gameObject.name} node={node.nodeId} nodeIcon={node.nodeIcon?.name}");
         if (icon != null)
         {
-                icon.raycastTarget = false;
-                icon.sprite = node.nodeIcon;
+            icon.sprite = node.nodeIcon;
+            icon.color = node.nodeIcon != null ? Color.white : Color.clear;
         }
-            
-        if (node.isUnlocked)
+
+        bool isUnlocked = RecipeKnowledgeManager.Instance != null &&
+                  RecipeKnowledgeManager.Instance.IsNodeUnlocked(node.nodeId);
+
+        Debug.Log($"[CraftTreeUI] node={node.nodeId}, managerUnlocked={isUnlocked}");
+
+        if (isUnlocked)
         {
-            // 解放済：通常表示
-            if (icon != null) icon.color = Color.white;
-            if (lockOverlay != null) lockOverlay.gameObject.SetActive(false);
+            if (icon != null)
+                icon.color = Color.white;
+
+            if (lockOverlay != null)
+                lockOverlay.gameObject.SetActive(false);
         }
         else if (ArePrerequisitesMet(node))
         {
-            // 前提条件は満たしている：暗い灰
-            if (icon != null) icon.color = new Color(0.3f, 0.3f, 0.3f, 1f);
-            if (lockOverlay != null) lockOverlay.gameObject.SetActive(false);
+            if (icon != null)
+                icon.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+
+            if (lockOverlay != null)
+                lockOverlay.gameObject.SetActive(false);
         }
         else
         {
-            // 前提条件未達成：暗い灰＋鍵マーク
-            if (icon != null) icon.color = new Color(0.3f, 0.3f, 0.3f, 1f);
-            if (lockOverlay != null) lockOverlay.gameObject.SetActive(true);
+            if (icon != null)
+                icon.color = new Color(0.3f, 0.3f, 0.3f, 1f);
+
+            if (lockOverlay != null)
+            {
+                lockOverlay.gameObject.SetActive(true);
+                if (lockSprite != null)
+                    lockOverlay.sprite = lockSprite;
+            }
         }
 
-        // クリックで詳細表示
-        CraftTreeNode capturedNode = node;
         Button btn = obj.GetComponent<Button>();
-        if (btn == null) btn = obj.AddComponent<Button>();
-        btn.onClick.AddListener(() => SelectNode(capturedNode));
-        Debug.Log($"[CraftTreeUI] Button登録: {obj.name} listeners={btn.onClick.GetPersistentEventCount()}");
+        if (btn == null)
+            btn = obj.AddComponent<Button>();
 
-        obj.name = $"Node_{node.nodeId}";
+        btn.targetGraphic = rootImage;
+        btn.transition = Selectable.Transition.ColorTint;
+
+        CraftTreeNode capturedNode = node;
+        btn.onClick.RemoveAllListeners();
+        btn.onClick.AddListener(() =>
+        {
+            Debug.Log($"[CraftTreeUI] Button onClick発火: {capturedNode.nodeId}");
+            SelectNode(capturedNode);
+        });
+
+        Debug.Log($"[CraftTreeUI] ノード生成: {obj.name}, clickable=true, nodeName={node.nodeName}");
     }
 
     bool ArePrerequisitesMet(CraftTreeNode node)
     {
+        if (node == null)
+            return false;
+
         if (node.prerequisites == null || node.prerequisites.Count == 0)
             return true;
+
         foreach (var prereqId in node.prerequisites)
         {
-            var prereqNode = currentTreeData.nodes.Find(n => n.nodeId == prereqId);
-            if (prereqNode == null || !prereqNode.isUnlocked)
+            if (RecipeKnowledgeManager.Instance == null ||
+                !RecipeKnowledgeManager.Instance.IsNodeUnlocked(prereqId))
                 return false;
         }
+
         return true;
     }
 
     void CreateLine(Vector2 from, Vector2 to)
     {
-        if (lineRendererPrefab == null) return;
+        if (lineRendererPrefab == null || nodeAreaParent == null)
+            return;
 
         GameObject lineObj = Instantiate(lineRendererPrefab, nodeAreaParent);
         lineObjects.Add(lineObj);
 
-        // lineObjをfromとtoの中点に配置し、幅をfromとtoの距離に設定
         RectTransform rt = lineObj.GetComponent<RectTransform>();
-        if (rt == null) return;
+        if (rt == null)
+            return;
 
         Vector2 dir = to - from;
         float dist = dir.magnitude;
         float angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
 
         rt.anchoredPosition = (from + to) / 2f;
-        rt.sizeDelta = new Vector2(dist, 4f);  // 高さ4pxのライン
+        rt.sizeDelta = new Vector2(dist, 4f);
         rt.localRotation = Quaternion.Euler(0f, 0f, angle);
 
-        // ラインを前面に持ってくる（ノードの後ろに表示）
         lineObj.transform.SetAsFirstSibling();
     }
 
     void ClearNodes()
     {
-        foreach (var obj in nodeObjects) Destroy(obj);
-        foreach (var obj in lineObjects) Destroy(obj);
+        foreach (var obj in nodeObjects)
+        {
+            if (obj != null)
+                Destroy(obj);
+        }
+
+        foreach (var obj in lineObjects)
+        {
+            if (obj != null)
+                Destroy(obj);
+        }
+
         nodeObjects.Clear();
         lineObjects.Clear();
     }
 
-    // -----------------------------------------------
-    // ノード詳細の描画
-    // -----------------------------------------------
-
     void SelectNode(CraftTreeNode node)
     {
-        Debug.Log($"[CraftTreeUI] SelectNode: {node?.nodeId}");
+        Debug.Log($"[CraftTreeUI] Node選択: {node.nodeId}");
+
         selectedNode = node;
         ShowDetail(node);
     }
 
     void ShowDetail(CraftTreeNode node)
     {
-        if (node == null) { ClearDetail(); return; }
+        if (node == null)
+        {
+            ClearDetail();
+            return;
+        }
 
-        // アイコン
+        Debug.Log($"[CraftTreeUI] ShowDetail開始: {node.nodeName}");
+
         if (detailIcon != null)
         {
             detailIcon.sprite = node.nodeIcon;
             detailIcon.color = node.nodeIcon != null ? Color.white : Color.clear;
         }
 
-        // ノード名
         if (detailNodeName != null)
-            detailNodeName.text = node.nodeName;
+            detailNodeName.text = string.IsNullOrEmpty(node.nodeName) ? "(No Name)" : node.nodeName;
 
-        // 解放されるレシピ一覧
         if (detailDescription != null)
         {
-            var recipeNames = new System.Text.StringBuilder();
-            recipeNames.AppendLine("解放されるレシピ：");
-            foreach (var recipe in node.unlockedRecipes)
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("解放されるレシピ:");
+
+            if (node.unlockedRecipes != null && node.unlockedRecipes.Count > 0)
             {
-                if (recipe != null)
-                    recipeNames.AppendLine($"・{recipe.itemResult?.itemName}");
+                foreach (var recipe in node.unlockedRecipes)
+                {
+                    if (recipe == null)
+                    {
+                        sb.AppendLine("・(null recipe)");
+                        continue;
+                    }
+
+                    string recipeName = recipe.itemResult != null ? recipe.itemResult.itemName : recipe.name;
+                    sb.AppendLine($"・{recipeName}");
+                }
             }
-            detailDescription.text = recipeNames.ToString();
+            else
+            {
+                sb.AppendLine("・なし");
+            }
+
+            detailDescription.text = sb.ToString();
         }
 
-        // 解放コスト一覧
         if (unlockCostParent != null)
         {
             foreach (Transform child in unlockCostParent)
                 Destroy(child.gameObject);
 
-            foreach (var cost in node.unlockCosts)
+            if (node.unlockCosts != null)
             {
-                if (unlockCostSlotPrefab == null) break;
-                GameObject row = Instantiate(unlockCostSlotPrefab, unlockCostParent);
-
-                int have = playerInventory.GetAmount(cost.item);
-                bool enough = have >= cost.count;
-
-                TextMeshProUGUI label = FindChild<TextMeshProUGUI>(row, "CostText");
-                if (label != null)
+                foreach (var cost in node.unlockCosts)
                 {
-                    label.text = $"{cost.item.itemName}  {have} / {cost.count}";
-                    label.color = enough ? Color.white : new Color(1f, 0.4f, 0.4f, 1f);
-                }
+                    if (unlockCostSlotPrefab == null)
+                        break;
 
-                Image icon = FindChild<Image>(row, "CostIcon");
-                if (icon != null)
-                {
-                    icon.sprite = cost.item.icon;
-                    icon.color = cost.item.icon != null ? Color.white : Color.clear;
+                    GameObject row = Instantiate(unlockCostSlotPrefab, unlockCostParent);
+
+                    int have = 0;
+                    bool enough = false;
+                    string itemName = "(null item)";
+                    Sprite itemIcon = null;
+
+                    if (cost != null && cost.item != null)
+                    {
+                        itemName = cost.item.itemName;
+                        itemIcon = cost.item.icon;
+
+                        if (playerInventory != null)
+                        {
+                            have = playerInventory.GetAmount(cost.item);
+                            enough = have >= cost.count;
+                        }
+                    }
+
+                    TextMeshProUGUI label = FindChild<TextMeshProUGUI>(row, "CostText");
+                    if (label != null)
+                    {
+                        int need = cost != null ? cost.count : 0;
+                        label.text = $"{itemName}  {have} / {need}";
+                        label.color = enough ? Color.white : new Color(1f, 0.4f, 0.4f, 1f);
+                    }
+
+                    Image costIcon = FindChild<Image>(row, "CostIcon");
+                    if (costIcon != null)
+                    {
+                        costIcon.sprite = itemIcon;
+                        costIcon.color = itemIcon != null ? Color.white : Color.clear;
+                    }
                 }
             }
         }
 
-        // UNLOCKボタンの状態更新
         UpdateUnlockButton(node);
+
+        Debug.Log($"[CraftTreeUI] ShowDetail完了: {node.nodeName}");
     }
 
     void UpdateUnlockButton(CraftTreeNode node)
     {
-        if (unlockButton == null) return;
+        if (unlockButton == null)
+            return;
 
-        if (node.isUnlocked)
+        if (node == null)
         {
             unlockButton.interactable = false;
-            if (unlockButtonText != null) unlockButtonText.text = "解放済み";
+            if (unlockButtonText != null)
+                unlockButtonText.text = "UNLOCK";
             return;
         }
 
-        bool prereqOk = currentTreeData.CanUnlock(node, RecipeKnowledgeManager.Instance);
-        bool canAfford = node.CanAfford(playerInventory);
+        bool isUnlocked = RecipeKnowledgeManager.Instance != null &&
+                  RecipeKnowledgeManager.Instance.IsNodeUnlocked(node.nodeId);
+
+        if (isUnlocked)
+        {
+            unlockButton.interactable = false;
+            if (unlockButtonText != null)
+                unlockButtonText.text = "解放済み";
+            return;
+        }
+
+        bool prereqOk = currentTreeData != null && RecipeKnowledgeManager.Instance != null
+            ? currentTreeData.CanUnlock(node, RecipeKnowledgeManager.Instance)
+            : ArePrerequisitesMet(node);
+
+        bool canAfford = playerInventory != null && node.CanAfford(playerInventory);
 
         unlockButton.interactable = prereqOk && canAfford;
 
         if (!prereqOk)
-            if (unlockButtonText != null) unlockButtonText.text = "前提未解放";
-            else if (!canAfford)
-                if (unlockButtonText != null) unlockButtonText.text = "素材不足";
-                else
-                if (unlockButtonText != null) unlockButtonText.text = "UNLOCK";
+        {
+            if (unlockButtonText != null)
+                unlockButtonText.text = "前提未解放";
+        }
+        else if (!canAfford)
+        {
+            if (unlockButtonText != null)
+                unlockButtonText.text = "素材不足";
+        }
+        else
+        {
+            if (unlockButtonText != null)
+                unlockButtonText.text = "UNLOCK";
+        }
     }
 
     void ClearDetail()
     {
-        if (detailIcon != null) detailIcon.color = Color.clear;
-        if (detailNodeName != null) detailNodeName.text = "";
-        if (detailDescription != null) detailDescription.text = "";
+        if (detailIcon != null)
+        {
+            detailIcon.sprite = null;
+            detailIcon.color = Color.clear;
+        }
+
+        if (detailNodeName != null)
+            detailNodeName.text = "";
+
+        if (detailDescription != null)
+            detailDescription.text = "";
+
         if (unlockCostParent != null)
+        {
             foreach (Transform child in unlockCostParent)
                 Destroy(child.gameObject);
-        if (unlockButton != null) unlockButton.interactable = false;
-    }
+        }
 
-    // -----------------------------------------------
-    // UNLOCK処理
-    // -----------------------------------------------
+        if (unlockButton != null)
+            unlockButton.interactable = false;
+
+        if (unlockButtonText != null)
+            unlockButtonText.text = "UNLOCK";
+    }
 
     void OnUnlockButtonPressed()
     {
-        if (selectedNode == null || currentTreeData == null) return;
-        if (selectedNode.isUnlocked) return;
-        if (!currentTreeData.CanUnlock(selectedNode, RecipeKnowledgeManager.Instance)) return;
-        if (!selectedNode.CanAfford(playerInventory)) return;
+        if (selectedNode == null || currentTreeData == null)
+            return;
 
-        // コスト消費
+        if (RecipeKnowledgeManager.Instance != null &&
+    RecipeKnowledgeManager.Instance.IsNodeUnlocked(selectedNode.nodeId))
+            return;
+
+        if (RecipeKnowledgeManager.Instance != null &&
+            !currentTreeData.CanUnlock(selectedNode, RecipeKnowledgeManager.Instance))
+            return;
+
+        if (playerInventory == null || !selectedNode.CanAfford(playerInventory))
+            return;
+
         foreach (var cost in selectedNode.unlockCosts)
         {
+            if (cost == null || cost.item == null)
+                continue;
+
             var slots = playerInventory.GetSlots();
             int remaining = cost.count;
+
             for (int i = 0; i < slots.Length && remaining > 0; i++)
             {
-                if (slots[i] == null || slots[i].item != cost.item) continue;
+                if (slots[i] == null || slots[i].item != cost.item)
+                    continue;
+
                 int take = Mathf.Min(slots[i].amount, remaining);
                 playerInventory.ReduceSlot(slots[i], take);
                 remaining -= take;
             }
         }
 
-        // ノード解放
-        selectedNode.isUnlocked = true;
+        if (RecipeKnowledgeManager.Instance != null)
+        {
+            RecipeKnowledgeManager.Instance.UnlockNode(selectedNode.nodeId);
+        }
 
-        // レシピを習得させる
         foreach (var recipe in selectedNode.unlockedRecipes)
         {
             if (recipe != null && RecipeKnowledgeManager.Instance != null)
                 RecipeKnowledgeManager.Instance.Learn(recipe);
         }
 
-        Debug.Log($"[CraftTreeUI] ノード解放：{selectedNode.nodeName}");
+        Debug.Log($"[CraftTreeUI] ノード解放: {selectedNode.nodeName}");
 
-        // UI更新
         BuildTree();
         ShowDetail(selectedNode);
     }
 
-    // -----------------------------------------------
-    // ユーティリティ
-    // -----------------------------------------------
-
-    /// <summary>WBレベルに対応するCraftTreeDataをResourcesから検索</summary>
     CraftTreeData FindTreeData(WBLevel level)
     {
-        // Resources/CraftTrees/ フォルダに置いたSOを全件検索
         var allTrees = Resources.LoadAll<CraftTreeData>("CraftTrees");
         foreach (var tree in allTrees)
-            if (tree.wbLevel == level) return tree;
+        {
+            if (tree.wbLevel == level)
+                return tree;
+        }
+
         return null;
     }
 
     T FindChild<T>(GameObject root, string name) where T : Component
     {
         foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
-            if (child.name == name) return child.GetComponent<T>();
+        {
+            if (child.name == name)
+                return child.GetComponent<T>();
+        }
+
         return null;
     }
 }

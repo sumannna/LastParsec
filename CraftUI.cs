@@ -189,20 +189,31 @@ public class CraftUI : MonoBehaviour
 
     public void RefreshRecipeList()
     {
-        // 既存スロットを削除
-        foreach (var obj in recipeSlotObjects)
-            Destroy(obj);
+        foreach (Transform child in recipeListParent)
+        {
+            Destroy(child.gameObject);
+        }
+
         recipeSlotObjects.Clear();
+
+        Debug.Log($"[CraftUI] 削除予約後 childCount={recipeListParent.childCount}, tracked={recipeSlotObjects.Count}");
 
         if (RecipeKnowledgeManager.Instance == null) return;
 
         var recipeList = RecipeKnowledgeManager.Instance
             .GetKnownRecipesWithCraftability(playerInventory);
 
+        Debug.Log($"[CraftUI] recipeList件数={recipeList.Count}");
+
         foreach (var (recipe, canCraft) in recipeList)
         {
+            Debug.Log($"[CraftUI] 生成 recipe={recipe.name}");
+
             GameObject slotObj = Instantiate(recipeSlotPrefab, recipeListParent);
             recipeSlotObjects.Add(slotObj);
+
+            RectTransform rt = slotObj.GetComponent<RectTransform>();
+            Debug.Log($"[CraftUI] 生成後 childCount={recipeListParent.childCount}, tracked={recipeSlotObjects.Count}, name={slotObj.name}, anchoredPos={rt.anchoredPosition}, localPos={rt.localPosition}");
 
             // アイコン
             Image icon = FindChild<Image>(slotObj, "ItemIcon");

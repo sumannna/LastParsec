@@ -17,6 +17,9 @@ public class RecipeKnowledgeManager : MonoBehaviour
     // 習得済みレシピのセット（実行時管理）
     private HashSet<RecipeData> knownRecipes = new HashSet<RecipeData>();
 
+    // 解放済みノードID
+    private HashSet<string> unlockedNodeIds = new HashSet<string>();
+
     // セーブ用キー（PlayerPrefs）
     private const string SaveKey = "KnownRecipes";
 
@@ -68,6 +71,23 @@ public class RecipeKnowledgeManager : MonoBehaviour
         return knownRecipes;
     }
 
+    /// <summary>ノードが解放済みか確認</summary>
+    public bool IsNodeUnlocked(string nodeId)
+    {
+        return unlockedNodeIds.Contains(nodeId);
+    }
+
+    /// <summary>ノードを解放済みにする</summary>
+    public void UnlockNode(string nodeId)
+    {
+        if (string.IsNullOrEmpty(nodeId)) return;
+
+        if (unlockedNodeIds.Add(nodeId))
+        {
+            Debug.Log($"[RecipeKnowledge] ノード解放: {nodeId}");
+        }
+    }
+
     /// <summary>
     /// クラフト画面向け：習得済みレシピをCanCraft状態付きで返す
     /// </summary>
@@ -88,6 +108,7 @@ public class RecipeKnowledgeManager : MonoBehaviour
     /// <summary>learnSource == Initial のレシピを自動登録する</summary>
     private void RegisterInitialRecipes()
     {
+        Debug.Log("[CraftUI] RefreshRecipeList 実行");
         if (recipeDatabase == null)
         {
             Debug.LogWarning("[RecipeKnowledge] RecipeDatabaseが未アサインです");
@@ -141,20 +162,44 @@ public class RecipeKnowledgeManager : MonoBehaviour
 
 #if UNITY_EDITOR
     [ContextMenu("全レシピを習得（デバッグ）")]
-    private void DebugLearnAll()
+private void DebugLearnAll()
+{
+    Debug.Log("[RecipeKnowledge] DebugLearnAll 呼び出し");
+
+    if (recipeDatabase == null)
     {
-        if (recipeDatabase == null) return;
-        foreach (var recipe in recipeDatabase.AllRecipes)
-            knownRecipes.Add(recipe);
-        Debug.Log("[RecipeKnowledge] 全レシピを習得しました");
+        Debug.Log("[RecipeKnowledge] recipeDatabase が null");
+        return;
     }
 
-    [ContextMenu("習得リセット（デバッグ）")]
-    private void DebugResetAll()
+    Debug.Log($"[RecipeKnowledge] 実行前 knownRecipes={knownRecipes.Count}, allRecipes={recipeDatabase.AllRecipes.Count}");
+
+    foreach (var recipe in recipeDatabase.AllRecipes)
     {
-        knownRecipes.Clear();
-        PlayerPrefs.DeleteKey(SaveKey);
-        Debug.Log("[RecipeKnowledge] 習得リセット完了");
+        if (recipe == null) continue;
+        knownRecipes.Add(recipe);
     }
+
+    Debug.Log($"[RecipeKnowledge] 実行後 knownRecipes={knownRecipes.Count}");
+    Debug.Log("[RecipeKnowledge] 全レシピを習得しました");
+}
+
+[ContextMenu("習得リセット（デバッグ）")]
+private void DebugResetAll()
+{
+    Debug.Log($"[RecipeKnowledge] Reset前 knownRecipes={knownRecipes.Count}");
+
+    knownRecipes.Clear();
+    unlockedNodeIds.Clear();
+    PlayerPrefs.DeleteKey(SaveKey);
+    PlayerPrefs.DeleteKey("UnlockedNodes");
+
+    Debug.Log($"[RecipeKnowledge] Clear後 knownRecipes={knownRecipes.Count}");
+
+    RegisterInitialRecipes();
+
+    Debug.Log($"[RecipeKnowledge] Initial再登録後 knownRecipes={knownRecipes.Count}");
+    Debug.Log("[RecipeKnowledge] 習得リセット完了");
+}
 #endif
 }
