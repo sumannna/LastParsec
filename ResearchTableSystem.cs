@@ -148,11 +148,29 @@ public class ResearchTableSystem : MonoBehaviour
     /// </summary>
     public bool TrySetBlueprint(Inventory.Slot slot)
     {
-        if (slot == null || slot.item == null) return false;
-        if (slot.item is not BlueprintData bp) return false;
-        if (IsResearching) return false;
+        Debug.Log("[ResearchTable] TrySetBlueprint 開始");
+
+        if (slot == null || slot.item == null)
+        {
+            Debug.Log("[ResearchTable] slot または item が null");
+            return false;
+        }
+
+        if (slot.item is not BlueprintData bp)
+        {
+            Debug.Log($"[ResearchTable] Blueprintではない item={slot.item.itemName}");
+            return false;
+        }
+
+        if (IsResearching)
+        {
+            Debug.Log("[ResearchTable] 研究中のためセット不可");
+            return false;
+        }
 
         currentBlueprint = bp;
+        Debug.Log($"[ResearchTable] currentBlueprint 設定={currentBlueprint.itemName}, iconNull={(currentBlueprint.icon == null)}");
+
         UpdateUI();
         return true;
     }
@@ -178,6 +196,12 @@ public class ResearchTableSystem : MonoBehaviour
             blueprintSlotIcon.sprite = hasBlueprint ? currentBlueprint.icon : null;
             blueprintSlotIcon.color = hasBlueprint && currentBlueprint.icon != null
                 ? Color.white : Color.clear;
+
+            Debug.Log($"[ResearchTable] UpdateUI hasBlueprint={hasBlueprint}, iconNull={(hasBlueprint ? currentBlueprint.icon == null : true)}, color={blueprintSlotIcon.color}");
+        }
+        else
+        {
+            Debug.Log("[ResearchTable] blueprintSlotIcon が null");
         }
 
         if (blueprintSlotText != null)

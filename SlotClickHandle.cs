@@ -98,12 +98,35 @@ public class SlotClickHandler : MonoBehaviour, IPointerClickHandler
     /// </summary>
     bool TrySetBlueprintToResearchTable()
     {
-        if (inventorySlot == null) return false;
-        if (inventorySlot.item is not BlueprintData) return false;
-        if (ResearchTableSystem.Instance == null) return false;
-        if (!ResearchTableSystem.Instance.IsOpen) return false;
+        Debug.Log("[SlotClickHandler] TrySetBlueprintToResearchTable 開始");
+
+        if (inventorySlot == null)
+        {
+            Debug.Log("[SlotClickHandler] inventorySlot が null");
+            return false;
+        }
+
+        if (inventorySlot.item is not BlueprintData)
+        {
+            Debug.Log($"[SlotClickHandler] Blueprintではない item={inventorySlot.item?.itemName}");
+            return false;
+        }
+
+        if (ResearchTableSystem.Instance == null)
+        {
+            Debug.Log("[SlotClickHandler] ResearchTableSystem.Instance が null");
+            return false;
+        }
+
+        if (!ResearchTableSystem.Instance.IsOpen)
+        {
+            Debug.Log("[SlotClickHandler] ResearchTable が閉じている");
+            return false;
+        }
 
         bool success = ResearchTableSystem.Instance.TrySetBlueprint(inventorySlot);
+        Debug.Log($"[SlotClickHandler] TrySetBlueprint 結果={success}");
+
         if (success)
         {
             Debug.Log($"[SlotClickHandler] BPをリサーチテーブルにセット：{inventorySlot.item.itemName}");
