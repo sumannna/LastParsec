@@ -346,10 +346,10 @@ public class ItemDragHandler : MonoBehaviour,
 
     void ShowSourceVisuals()
     {
-        // ホットバーからのドラッグ：RefreshAllで更新するためここでは何もしない
+        Debug.Log($"[ItemDragHandler] ShowSourceVisuals: sourceIcon={sourceIcon?.gameObject.name ?? "null"}, active前={sourceIcon?.gameObject.activeSelf}");
         if (wasHotbarDrag) return;
-
         if (sourceIcon != null) sourceIcon.gameObject.SetActive(true);
+        // 以降は既存コードそのまま
 
         // ゲージはゲージ付きアイテムのみ表示（非ゲージアイテムにゲージが出るバグを防ぐ）
         if (sourceGaugeObject != null)
@@ -527,14 +527,18 @@ public class ItemDragHandler : MonoBehaviour,
         AnyDragging = false;
 
         if (dragIcon != null) { Destroy(dragIcon); dragIcon = null; }
+        else Debug.LogWarning("[ItemDragHandler] OnEndDrag: dragIcon は既にnull");
 
-        if ((inventorySlot != null || equipmentSlotData != null) && !wasHotbarDrag)
+        Debug.Log($"[ItemDragHandler] OnEndDrag: inventorySlot={inventorySlot?.item?.itemName ?? "null"}, wasHotbarDrag={wasHotbarDrag}");
+
+        bool willShowSource = (inventorySlot != null || equipmentSlotData != null) && !wasHotbarDrag;
+        Debug.Log($"[ItemDragHandler] ShowSourceVisuals実行予定={willShowSource}");
+
+        if (willShowSource)
             ShowSourceVisuals();
 
         var results = new List<RaycastResult>();
         EventSystem.current.RaycastAll(eventData, results);
-
-        Debug.Log($"[ItemDragHandler] OnEndDrag resultsCount={results.Count}");
 
         foreach (var result in results)
         {

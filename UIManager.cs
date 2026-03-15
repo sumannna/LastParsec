@@ -45,6 +45,19 @@ public class UIManager : MonoBehaviour
             CraftTreeUI.Instance.Close();
     }
 
+    public bool IsAnyUIOpen()
+    {
+        if (inventoryUI != null && inventoryUI.IsOpen) return true;
+        if (craftUI != null && craftUI.IsOpen) return true;
+        if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen) return true;
+
+        var tables = FindObjectsOfType<ResearchTableSystem>();
+        foreach (var table in tables)
+            if (table != null && table.IsOpen) return true;
+
+        return false;
+    }
+
     /// <summary>インベントリを開く（他を閉じてから）</summary>
     public void OpenInventory()
     {

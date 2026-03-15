@@ -26,6 +26,7 @@ public class CraftUI : MonoBehaviour
     public Transform ingredientListParent;      // 素材リスト親
     public GameObject ingredientSlotPrefab;     // 素材1行Prefab
     public TextMeshProUGUI craftTimeText;       // クラフト時間表示
+    public TextMeshProUGUI wbLevelText;         // 必要ワークベンチ
 
     [Header("クラフト実行")]
     public Image progressBarImage;          // FillAmount方式のImage
@@ -131,13 +132,16 @@ public class CraftUI : MonoBehaviour
             float progress = CraftSystem.Instance.Progress;
             if (progressBarImage != null)
                 progressBarImage.rectTransform.localScale = new Vector3(progress, 1f, 1f);
-
             if (remainingTimeText != null && CraftSystem.Instance.CurrentRecipe != null)
             {
                 float remaining = CraftSystem.Instance.CurrentRecipe.craftTime * (1f - progress);
                 remainingTimeText.text = $"{remaining:F1}";
             }
         }
+
+        // WB距離が変わる可能性があるため毎フレームボタン状態を更新
+        if (isOpen && !CraftSystem.Instance.IsCrafting)
+            UpdateCraftButton();
     }
 
     // -----------------------------------------------
@@ -290,8 +294,13 @@ public class CraftUI : MonoBehaviour
         }
 
         // WB必須表示
-        if (recipe.requiredWBLevel != WBLevel.None)
-            Debug.Log($"[CraftUI] このレシピにはWB {recipe.requiredWBLevel} が必要です");
+        if (wbLevelText != null)
+        {
+            if (recipe.requiredWBLevel != WBLevel.None)
+                wbLevelText.text = $"必要ワークベンチ：Lv{(int)recipe.requiredWBLevel}";
+            else
+                wbLevelText.text = "";
+        }
 
         UpdateCraftButton();
     }
@@ -302,6 +311,7 @@ public class CraftUI : MonoBehaviour
         if (detailName != null) detailName.text = "";
         if (detailDescription != null) detailDescription.text = "";
         if (craftTimeText != null) craftTimeText.text = "";
+        if (wbLevelText != null) wbLevelText.text = "";
         if (ingredientListParent != null)
             foreach (Transform child in ingredientListParent)
                 Destroy(child.gameObject);
@@ -311,11 +321,37 @@ public class CraftUI : MonoBehaviour
     void UpdateCraftButton()
     {
         if (craftButton == null) return;
-        bool canCraft = selectedRecipe != null
-                     && selectedRecipe.CanCraft(playerInventory)
-                     && !CraftSystem.Instance.IsCrafting;
-        craftButton.interactable = canCraft;
 
+        bool wbOk = true;
+        if (selectedRecipe != null && selectedRecipe.requiredWBLevel != WBLevel.None)
+        {
+            wbOk = false;
+            var allWB = FindObjectsOfType<WorkbenchInteraction>();
+            Debug.Log($"[CraftUI] WBチェック: requiredLevel={selectedRecipe.requiredWBLevel} WB数={allWB.Length}");
+            foreach (var wb in allWB)
+            {
+                bool inRange = wb.IsPlayerInRange();
+                Debug.Log($"[CraftUI] WB={wb.gameObject.name} level={wb.wbLevel} inRange={inRange}");
+                if (wb != null && wb.wbLevel == selectedRecipe.requiredWBLevel && inRange)
+                {
+                    wbOk = true;
+                    break;
+                }
+            }
+            Debug.Log($"[CraftUI] wbOk={wbOk}");
+        }
+
+        bool recipeCraft = selectedRecipe != null && selectedRecipe.CanCraft(playerInventory);
+        bool notCrafting = !CraftSystem.Instance.IsCrafting;
+        Debug.Log($"[CraftUI] canCraft判定: selectedRecipe={selectedRecipe != null} recipeCraft={recipeCraft} notCrafting={notCrafting} wbOk={wbOk}");
+
+        bool canCraft = selectedRecipe != null
+                     && recipeCraft
+                     && notCrafting
+                     && wbOk;
+
+        craftButton.interactable = canCraft;
+        Debug.Log($"[CraftUI] craftButton.interactable={craftButton.interactable} canCraft={canCraft}");
         if (cancelButton != null)
             cancelButton.interactable = CraftSystem.Instance != null
                                      && CraftSystem.Instance.IsCrafting;
@@ -330,7 +366,24 @@ public class CraftUI : MonoBehaviour
         if (selectedRecipe == null) return;
         if (CraftSystem.Instance == null) return;
 
-        bool started = CraftSystem.Instance.StartCraft(selectedRecipe, craftCount);
+        Debug.Log($"[CraftUI] OnCraftButtonPressed: recipe={selectedRecipe.name} craftCount={craftCount} requiredWB={selectedRecipe.requiredWBLevel}");
+
+        WorkbenchInteraction nearbyWB = null;
+        if (selectedRecipe.requiredWBLevel != WBLevel.None)
+        {
+            foreach (var wb in FindObjectsOfType<WorkbenchInteraction>())
+            {
+                if (wb != null && wb.wbLevel == selectedRecipe.requiredWBLevel && wb.IsPlayerInRange())
+                {
+                    nearbyWB = wb;
+                    break;
+                }
+            }
+        }
+
+        bool started = CraftSystem.Instance.StartCraft(selectedRecipe, craftCount, nearbyWB);
+
+        Debug.Log($"[CraftUI] StartCraft result={started}");
         if (started)
         {
             SetProgressVisible(true);

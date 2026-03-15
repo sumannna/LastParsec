@@ -40,7 +40,6 @@ public class RecipeKnowledgeManager : MonoBehaviour
 
     void Start()
     {
-        LoadKnowledge();
         RegisterInitialRecipes();
     }
 
@@ -60,7 +59,6 @@ public class RecipeKnowledgeManager : MonoBehaviour
         if (recipe == null) return;
         if (knownRecipes.Add(recipe))
         {
-            SaveKnowledge();
             Debug.Log($"[RecipeKnowledge] èKìæ: {recipe.name}");
         }
     }

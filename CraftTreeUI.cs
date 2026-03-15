@@ -272,9 +272,8 @@ public class CraftTreeUI : MonoBehaviour
         }
 
         bool isUnlocked = RecipeKnowledgeManager.Instance != null &&
-                  RecipeKnowledgeManager.Instance.IsNodeUnlocked(node.nodeId);
-
-        Debug.Log($"[CraftTreeUI] node={node.nodeId}, managerUnlocked={isUnlocked}");
+          (RecipeKnowledgeManager.Instance.IsNodeUnlocked(node.nodeId)
+           || IsNodeUnlockedByRecipeKnowledge(node));
 
         if (isUnlocked)
         {
@@ -316,28 +315,77 @@ public class CraftTreeUI : MonoBehaviour
         btn.onClick.RemoveAllListeners();
         btn.onClick.AddListener(() =>
         {
-            Debug.Log($"[CraftTreeUI] Button onClick発火: {capturedNode.nodeId}");
             SelectNode(capturedNode);
         });
+    }
 
-        Debug.Log($"[CraftTreeUI] ノード生成: {obj.name}, clickable=true, nodeName={node.nodeName}");
+    bool IsNodeUnlockedByRecipeKnowledge(CraftTreeNode node)
+    {
+        if (node.unlockedRecipes == null || node.unlockedRecipes.Count == 0)
+        {
+            Debug.Log($"[CraftTreeUI] node={node.nodeId} unlockedRecipesが空");
+            return false;
+        }
+        if (RecipeKnowledgeManager.Instance == null) return false;
+
+        foreach (var recipe in node.unlockedRecipes)
+        {
+            if (recipe == null) continue;
+            bool isKnown = RecipeKnowledgeManager.Instance.IsKnown(recipe);
+            Debug.Log($"[CraftTreeUI] node={node.nodeId} recipe={recipe.name} learnSource={recipe.learnSource} isKnown={isKnown}");
+
+            if ((recipe.learnSource & LearnSource.Initial) != 0) continue;
+            if (!isKnown) return false;
+        }
+
+        foreach (var recipe in node.unlockedRecipes)
+        {
+            if (recipe == null) continue;
+            if ((recipe.learnSource & LearnSource.Initial) == 0)
+            {
+                Debug.Log($"[CraftTreeUI] node={node.nodeId} → true (CraftTree/ResearchTable経由レシピあり)");
+                return true;
+            }
+        }
+
+        Debug.Log($"[CraftTreeUI] node={node.nodeId} → false (Initial以外のレシピなし)");
+        return false;
     }
 
     bool ArePrerequisitesMet(CraftTreeNode node)
     {
-        if (node == null)
-            return false;
-
-        if (node.prerequisites == null || node.prerequisites.Count == 0)
-            return true;
+        if (node == null) return false;
+        if (node.prerequisites == null || node.prerequisites.Count == 0) return true;
 
         foreach (var prereqId in node.prerequisites)
         {
-            if (RecipeKnowledgeManager.Instance == null ||
-                !RecipeKnowledgeManager.Instance.IsNodeUnlocked(prereqId))
-                return false;
+            CraftTreeNode prereqNode = currentTreeData?.GetNode(prereqId);
+            if (!IsNodeFullyUnlocked(prereqNode)) return false;
         }
+        return true;
+    }
 
+    /// <summary>
+    /// ノードが解放済みかつ、そのノードの前提も全て根本から繋がっているか再帰チェック
+    /// </summary>
+    bool IsNodeFullyUnlocked(CraftTreeNode node)
+    {
+        if (node == null) return false;
+        if (RecipeKnowledgeManager.Instance == null) return false;
+
+        // このノード自体が解放されているか
+        bool unlocked = RecipeKnowledgeManager.Instance.IsNodeUnlocked(node.nodeId)
+                     || IsNodeUnlockedByRecipeKnowledge(node);
+        if (!unlocked) return false;
+
+        // このノードの前提も全て解放されているか再帰チェック
+        if (node.prerequisites == null || node.prerequisites.Count == 0) return true;
+
+        foreach (var prereqId in node.prerequisites)
+        {
+            CraftTreeNode prereqNode = currentTreeData?.GetNode(prereqId);
+            if (!IsNodeFullyUnlocked(prereqNode)) return false;
+        }
         return true;
     }
 
@@ -486,8 +534,6 @@ public class CraftTreeUI : MonoBehaviour
         }
 
         UpdateUnlockButton(node);
-
-        Debug.Log($"[CraftTreeUI] ShowDetail完了: {node.nodeName}");
     }
 
     void UpdateUnlockButton(CraftTreeNode node)
@@ -504,7 +550,8 @@ public class CraftTreeUI : MonoBehaviour
         }
 
         bool isUnlocked = RecipeKnowledgeManager.Instance != null &&
-                  RecipeKnowledgeManager.Instance.IsNodeUnlocked(node.nodeId);
+          (RecipeKnowledgeManager.Instance.IsNodeUnlocked(node.nodeId)
+           || IsNodeUnlockedByRecipeKnowledge(node));
 
         if (isUnlocked)
         {
@@ -514,9 +561,7 @@ public class CraftTreeUI : MonoBehaviour
             return;
         }
 
-        bool prereqOk = currentTreeData != null && RecipeKnowledgeManager.Instance != null
-            ? currentTreeData.CanUnlock(node, RecipeKnowledgeManager.Instance)
-            : ArePrerequisitesMet(node);
+        bool prereqOk = ArePrerequisitesMet(node);
 
         bool canAfford = playerInventory != null && node.CanAfford(playerInventory);
 
@@ -572,11 +617,11 @@ public class CraftTreeUI : MonoBehaviour
             return;
 
         if (RecipeKnowledgeManager.Instance != null &&
-    RecipeKnowledgeManager.Instance.IsNodeUnlocked(selectedNode.nodeId))
+        (RecipeKnowledgeManager.Instance.IsNodeUnlocked(selectedNode.nodeId)
+        || IsNodeUnlockedByRecipeKnowledge(selectedNode)))
             return;
 
-        if (RecipeKnowledgeManager.Instance != null &&
-            !currentTreeData.CanUnlock(selectedNode, RecipeKnowledgeManager.Instance))
+        if (!ArePrerequisitesMet(selectedNode))
             return;
 
         if (playerInventory == null || !selectedNode.CanAfford(playerInventory))

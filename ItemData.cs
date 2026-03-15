@@ -6,7 +6,7 @@ public class ItemData : ScriptableObject
     [Header("基本情報")]
     public string itemName = "アイテム";
     public Sprite icon;
-    public int maxStack = 10;
+    public int maxStack = 1;
 
     [Header("種類")]
     public ItemType itemType;
@@ -15,14 +15,8 @@ public class ItemData : ScriptableObject
 
 public enum ItemType
 {
-    // 素材・消耗品（0〜49）
-    Oxygen = 0,
-    Fuel = 1,
-    Metal = 2,
-    Stone = 3,
-    Wood = 4,
-    Organic = 5,
-    Ice = 6,
+    // 素材（0〜49）
+    Material = 2,
 
     // 装備品（50〜）
     Spacesuit = 50,
@@ -35,8 +29,11 @@ public enum ItemType
     // 消耗品（150〜）
     Consumable = 150,
 
-    // ブループリント（200〜）← 追加
+    // ブループリント（200〜）
     Blueprint = 200,
+
+    // 設置物（300〜）
+    Placeable = 300,
 }
 
 public enum ItemCategory

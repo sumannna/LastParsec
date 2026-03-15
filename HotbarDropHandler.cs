@@ -141,10 +141,6 @@ public class HotbarDropHandler : MonoBehaviour, IDropHandler
     bool IsMaterial(ItemData item)
     {
         if (item == null) return false;
-        return item.itemType == ItemType.Metal
-            || item.itemType == ItemType.Stone
-            || item.itemType == ItemType.Wood
-            || item.itemType == ItemType.Organic
-            || item.itemType == ItemType.Ice;
+        return item.itemType == ItemType.Material;
     }
 }

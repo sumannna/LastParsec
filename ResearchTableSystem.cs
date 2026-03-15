@@ -35,6 +35,8 @@ public class ResearchTableSystem : MonoBehaviour
     [SerializeField] private Button researchButton;
     [SerializeField] private TextMeshProUGUI researchButtonText;
     [SerializeField] private Image progressBar;
+    [SerializeField] private GameObject progressBarBG;
+    [SerializeField] private TextMeshProUGUI remainingTimeText;
 
     [Header("参照")]
     [SerializeField] private Transform playerTransform;
@@ -61,9 +63,8 @@ public class ResearchTableSystem : MonoBehaviour
         if (researchPanel != null) researchPanel.SetActive(false);
         if (closeButton != null) closeButton.onClick.AddListener(ClosePanel);
         if (researchButton != null) researchButton.onClick.AddListener(OnResearchButtonPressed);
-        if (progressBar != null)
-            progressBar.rectTransform.sizeDelta = new Vector2(0f, progressBar.rectTransform.sizeDelta.y);
-
+        if (progressBarBG != null) progressBarBG.SetActive(false);
+        if (remainingTimeText != null) remainingTimeText.gameObject.SetActive(false);
         currentBlueprint = null;
         UpdateUI();
     }
@@ -85,8 +86,11 @@ public class ResearchTableSystem : MonoBehaviour
         if (IsPlayerInRange() && Input.GetKeyDown(KeyCode.E))
         {
             if (isOpen) ClosePanel();
-            else if (UIManager.Instance != null) UIManager.Instance.OpenResearchTable(this);
-            else OpenPanel();
+            else if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
+            {
+                if (UIManager.Instance != null) UIManager.Instance.OpenResearchTable(this);
+                else OpenPanel();
+            }
             return;
         }
 
@@ -97,14 +101,16 @@ public class ResearchTableSystem : MonoBehaviour
             return;
         }
 
-        if (isOpen && IsResearching && progressBar != null)
+        if (isOpen && IsResearching)
         {
-            RectTransform bar = progressBar.rectTransform;
-            RectTransform bg = progressBar.transform.parent.GetComponent<RectTransform>();
+            if (progressBar != null)
+                progressBar.rectTransform.localScale = new Vector3(currentProgress, 1f, 1f);
 
-            float maxWidth = bg.rect.width;
-
-            bar.sizeDelta = new Vector2(maxWidth * currentProgress, bar.sizeDelta.y);
+            if (remainingTimeText != null && currentBlueprint != null)
+            {
+                float remaining = currentBlueprint.researchTime * (1f - currentProgress);
+                remainingTimeText.text = $"{remaining:F1}";
+            }
         }
     }
 
@@ -129,6 +135,9 @@ public class ResearchTableSystem : MonoBehaviour
         if (dropHandler != null)
             dropHandler.SetResearchTable(this);
 
+        // ブループリントスロットにD&D・ダブルクリック用ハンドラを付与
+        SetupBlueprintSlotHandlers();
+
         isOpen = true;
         researchPanel.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
@@ -138,6 +147,47 @@ public class ResearchTableSystem : MonoBehaviour
             inventoryUI.OpenInventoryExternal();
 
         UpdateUI();
+    }
+
+    void SetupBlueprintSlotHandlers()
+    {
+        if (researchPanel == null) return;
+
+        // ResearchPanel以下を広く検索
+        ResearchBlueprintHandler rbh = researchPanel.GetComponentInChildren<ResearchBlueprintHandler>(true);
+        if (rbh != null)
+        {
+            rbh.SetResearchTable(this);
+            Debug.Log($"[ResearchTable] SetResearchTable 完了: {rbh.gameObject.name}");
+        }
+        else
+        {
+            Debug.LogWarning("[ResearchTable] ResearchBlueprintHandler が見つかりません");
+            return;
+        }
+
+        // ダブルクリックのみ追加（BlueprintSlotDragHandlerは削除）
+        // ダブルクリックはResearchBlueprintHandlerのGameObjectに追加
+        GameObject slotObj = rbh.gameObject;
+        if (slotObj.GetComponent<BlueprintSlotClickHandler>() == null)
+        {
+            var clickHandler = slotObj.AddComponent<BlueprintSlotClickHandler>();
+            clickHandler.researchTable = this;
+            clickHandler.inventoryUI = inventoryUI;
+        }
+
+        // D&D送り出しはblueprintSlotIcon（子）に追加（DropHandlerと分離）
+        if (blueprintSlotIcon != null)
+        {
+            GameObject iconObj = blueprintSlotIcon.gameObject;
+            if (iconObj.GetComponent<BlueprintSlotDragHandler>() == null)
+            {
+                var dragHandler = iconObj.AddComponent<BlueprintSlotDragHandler>();
+                dragHandler.researchTable = this;
+                dragHandler.inventory = playerInventory;
+                dragHandler.inventoryUI = inventoryUI;
+            }
+        }
     }
 
     public void ClosePanel()
@@ -206,12 +256,19 @@ public class ResearchTableSystem : MonoBehaviour
 
         Debug.Log($"[ResearchTable] 新規セット完了 obj={gameObject.name} id={GetInstanceID()} current={currentBlueprint.itemName}, slotAmountAfter={slot.amount}");
 
-        if (inventoryUI != null && inventoryUI.IsOpen)
-            inventoryUI.RefreshAll();
+        StartCoroutine(DelayedRefresh());
 
         UpdateUI();
         return true;
     }
+
+    private System.Collections.IEnumerator DelayedRefresh()
+    {
+        yield return null;
+        if (inventoryUI != null && inventoryUI.IsOpen)
+            inventoryUI.RefreshAll();
+    }
+
 
     // -----------------------------------------------
     // UI更新
@@ -307,6 +364,8 @@ public class ResearchTableSystem : MonoBehaviour
         }
 
         bool canResearch = CanResearchWithInsertedBlueprint();
+        Debug.Log($"[ResearchTable] UpdateResearchButton: canResearch={canResearch} IsResearching={IsResearching}");
+
         researchButton.interactable = canResearch && !IsResearching;
         if (researchButtonText != null)
             researchButtonText.text = canResearch ? "リサーチ開始" : "素材不足";
@@ -345,6 +404,8 @@ public class ResearchTableSystem : MonoBehaviour
 
         if (researchButtonText != null) researchButtonText.text = "リサーチ中...";
         if (researchButton != null) researchButton.interactable = false;
+        if (progressBarBG != null) progressBarBG.SetActive(true);
+        if (remainingTimeText != null) remainingTimeText.gameObject.SetActive(true);
 
         while (elapsed < total)
         {
@@ -385,8 +446,14 @@ public class ResearchTableSystem : MonoBehaviour
         currentBlueprint = null;
 
         if (progressBar != null)
-            progressBar.rectTransform.sizeDelta = new Vector2(0f, progressBar.rectTransform.sizeDelta.y);
+            progressBar.rectTransform.localScale = new Vector3(0f, 1f, 1f);
 
+        if (progressBar != null)
+            progressBar.rectTransform.localScale = new Vector3(0f, 1f, 1f);
+        if (progressBarBG != null)
+            progressBarBG.SetActive(false);
+        if (remainingTimeText != null)
+            remainingTimeText.gameObject.SetActive(false);
         UpdateUI();
     }
 
@@ -401,22 +468,37 @@ public class ResearchTableSystem : MonoBehaviour
         currentProgress = 0f;
 
         if (progressBar != null)
-            progressBar.rectTransform.sizeDelta = new Vector2(0f, progressBar.rectTransform.sizeDelta.y);
+            progressBar.rectTransform.localScale = new Vector3(0f, 1f, 1f);
 
-        Debug.Log("[ResearchTable] キャンセル（消費なし）");
+        if (progressBar != null)
+            progressBar.rectTransform.localScale = new Vector3(0f, 1f, 1f);
+        if (progressBarBG != null)
+            progressBarBG.SetActive(false);
+        if (remainingTimeText != null)
+            remainingTimeText.gameObject.SetActive(false);
         UpdateUI();
     }
 
     bool CanResearchWithInsertedBlueprint()
     {
-        if (currentBlueprint == null) return false;
+        if (currentBlueprint == null)
+        {
+            Debug.Log("[ResearchTable] CanResearch: blueprint null");
+            return false;
+        }
 
         foreach (var cost in currentBlueprint.researchCosts)
         {
-            if (playerInventory.GetAmount(cost.item) < cost.count)
+            int have = playerInventory.GetAmount(cost.item);
+            Debug.Log($"[ResearchTable] CanResearch: item={cost.item?.itemName} need={cost.count} have={have}");
+            if (have < cost.count)
+            {
+                Debug.Log($"[ResearchTable] CanResearch: 不足 → false");
                 return false;
+            }
         }
 
+        Debug.Log("[ResearchTable] CanResearch: → true");
         return true;
     }
 

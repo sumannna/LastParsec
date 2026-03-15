@@ -33,12 +33,12 @@ public class ToolUser : MonoBehaviour
         Hotbar.Slot hotbarSlot = slots[selectedIndex];
         if (hotbarSlot == null || hotbarSlot.item == null) return;
 
-        Debug.Log($"[ToolUser] 左クリック / 選択アイテム: {hotbarSlot.item.itemName} / 型: {hotbarSlot.item.GetType().Name}");
-
         if (hotbarSlot.item is PickaxeData pickaxe)
             UsePick(pickaxe, selectedIndex, hotbarSlot);
         else if (hotbarSlot.item is MedicineData medicine)
             UseMedicine(medicine);
+        else if (hotbarSlot.item is PlaceableData)
+            return; // PlacementSystemが処理するため無視
     }
 
     // -----------------------------------------------

@@ -22,6 +22,14 @@ public class PlayerController : MonoBehaviour
     private float verticalRotation = 0f;
     private Vector3 velocity = Vector3.zero;
 
+    [Header("重力設定")]
+    public float gravityStrength = 9.8f;
+    public float walkSpeed = 5f;
+    public float runSpeed = 9f;
+    public float jumpForce = 4f;
+    public float crouchHeight = 0.5f;
+    public float standHeight = 2f;
+
     void Start()
     {
         controller = GetComponent<CharacterController>();
@@ -72,66 +80,75 @@ public class PlayerController : MonoBehaviour
             cameraRig.Rotate(Vector3.up * mouseX);
         }
 
-        bool isThrusting = false;
-        Vector3 thrust = Vector3.zero;
+        bool hasGravity = EnvironmentSystem.Instance != null && EnvironmentSystem.Instance.HasCentrifugalGravity;
 
-        // インベントリ中も移動入力を受け付ける仕様
-        if (!isDead)
+        if (hasGravity)
         {
-            if (Input.GetKey(KeyCode.W))
+            if (!isDead)
             {
-                thrust += cameraTransform.forward;
-                isThrusting = true;
+                bool shift = Input.GetKey(KeyCode.LeftShift);
+                bool crouch = Input.GetKey(KeyCode.LeftControl);
+                float speed = crouch ? walkSpeed * 0.5f : (shift ? runSpeed : walkSpeed);
+
+                controller.height = crouch ? crouchHeight : standHeight;
+
+                Vector3 move = Vector3.zero;
+                if (Input.GetKey(KeyCode.W)) move += cameraRig.forward;
+                if (Input.GetKey(KeyCode.S)) move -= cameraRig.forward;
+                if (Input.GetKey(KeyCode.A)) move -= cameraRig.right;
+                if (Input.GetKey(KeyCode.D)) move += cameraRig.right;
+                move.y = 0f;
+                if (move.magnitude > 1f) move.Normalize();
+
+                velocity.x = move.x * speed;
+                velocity.z = move.z * speed;
+
+                if (Input.GetKeyDown(KeyCode.Space) && controller.isGrounded)
+                    velocity.y = jumpForce;
+            }
+            else
+            {
+                velocity.x = 0f;
+                velocity.z = 0f;
             }
 
-            if (Input.GetKey(KeyCode.S))
-            {
-                thrust -= cameraTransform.forward;
-                isThrusting = true;
-            }
-
-            if (Input.GetKey(KeyCode.A))
-            {
-                thrust -= cameraTransform.right;
-                isThrusting = true;
-            }
-
-            if (Input.GetKey(KeyCode.D))
-            {
-                thrust += cameraTransform.right;
-                isThrusting = true;
-            }
-
-            if (Input.GetKey(KeyCode.Space))
-            {
-                thrust += Vector3.up;
-                isThrusting = true;
-            }
-
-            if (Input.GetKey(KeyCode.LeftControl))
-            {
-                thrust += Vector3.down;
-                isThrusting = true;
-            }
+            // 重力は常に1箇所のみで処理
+            if (controller.isGrounded && velocity.y < 0f)
+                velocity.y = -2f;
+            else
+                velocity.y -= gravityStrength * Time.deltaTime;
         }
-
-        if (!isDead && isThrusting && thrust != Vector3.zero && (fuelSystem == null || fuelSystem.HasFuel()))
+        else
         {
-            velocity += thrust.normalized * thrustForce * Time.deltaTime;
+            // 無重力：スラスター移動
+            bool isThrusting = false;
+            Vector3 thrust = Vector3.zero;
 
-            if (velocity.magnitude > maxSpeed)
-                velocity = velocity.normalized * maxSpeed;
+            if (!isDead)
+            {
+                if (Input.GetKey(KeyCode.W)) { thrust += cameraTransform.forward; isThrusting = true; }
+                if (Input.GetKey(KeyCode.S)) { thrust -= cameraTransform.forward; isThrusting = true; }
+                if (Input.GetKey(KeyCode.A)) { thrust -= cameraTransform.right; isThrusting = true; }
+                if (Input.GetKey(KeyCode.D)) { thrust += cameraTransform.right; isThrusting = true; }
+                if (Input.GetKey(KeyCode.Space)) { thrust += Vector3.up; isThrusting = true; }
+                if (Input.GetKey(KeyCode.LeftControl)) { thrust += Vector3.down; isThrusting = true; }
+            }
 
-            if (fuelSystem != null)
-                fuelSystem.UseFuel(Time.deltaTime);
-        }
+            if (!isDead && isThrusting && thrust != Vector3.zero && (fuelSystem == null || fuelSystem.HasFuel()))
+            {
+                velocity += thrust.normalized * thrustForce * Time.deltaTime;
+                if (velocity.magnitude > maxSpeed)
+                    velocity = velocity.normalized * maxSpeed;
+                if (fuelSystem != null)
+                    fuelSystem.UseFuel(Time.deltaTime);
+            }
 
-        if (!isDead && !isThrusting)
-        {
-            velocity *= Mathf.Pow(inertiaDamping, Time.deltaTime * 60f);
-
-            if (velocity.magnitude < stopThreshold)
-                velocity = Vector3.zero;
+            if (!isDead && !isThrusting)
+            {
+                velocity *= Mathf.Pow(inertiaDamping, Time.deltaTime * 60f);
+                if (velocity.magnitude < stopThreshold)
+                    velocity = Vector3.zero;
+            }
         }
 
         CollisionFlags flags = controller.Move(velocity * Time.deltaTime);
@@ -139,7 +156,7 @@ public class PlayerController : MonoBehaviour
         if ((flags & CollisionFlags.Above) != 0 && velocity.y > 0)
             velocity.y = -velocity.y * bounceFactor;
 
-        if ((flags & CollisionFlags.Below) != 0 && velocity.y < 0)
+        if (!hasGravity && (flags & CollisionFlags.Below) != 0 && velocity.y < 0)
             velocity.y = -velocity.y * bounceFactor;
     }
 
@@ -160,7 +177,7 @@ public class PlayerController : MonoBehaviour
         if (!keepPosition)
         {
             controller.enabled = false;
-            transform.position = new Vector3(0f, 1f, 0f);
+            transform.position = new Vector3(0f, 0f, 0f);
             controller.enabled = true;
         }
     }

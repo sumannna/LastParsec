@@ -15,7 +15,7 @@ public class WorkbenchInteraction : MonoBehaviour
     [SerializeField] private float interactRange = 1f;  // 仕様：1m以内
 
     [Header("参照")]
-    [SerializeField] private Transform playerTransform;
+    [SerializeField] public Transform playerTransform;
 
     // -----------------------------------------------
     // 毎フレーム更新
@@ -29,7 +29,7 @@ public class WorkbenchInteraction : MonoBehaviour
         {
             if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen)
                 CraftTreeUI.Instance.Close();
-            else
+            else if (UIManager.Instance == null || (!UIManager.Instance.IsAnyUIOpen()))
                 OpenCraftTree();
         }
     }
