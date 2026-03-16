@@ -27,12 +27,22 @@ public class ChestInteraction : MonoBehaviour
             return;
         }
 
-        if (!IsPlayerInRange()) return;
+        if (!IsPlayerInRange())
+        {
+            return;
+        }
 
         if (Input.GetKeyDown(KeyCode.E))
         {
-            if (isOpen) CloseChest();
-            else OpenChest();
+            if (ChestUI.Instance != null && ChestUI.Instance.ClosedThisFrame) return;
+            if (ChestUI.Instance != null && ChestUI.Instance.IsOpen) return;
+            if (isOpen)
+            {
+                CloseChest();
+                return;
+            }
+            if (UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen()) return;
+            OpenChest();
         }
     }
 
@@ -41,12 +51,16 @@ public class ChestInteraction : MonoBehaviour
         if (UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen()) return;
 
         isOpen = true;
+
         if (ChestUI.Instance != null)
+        {
             ChestUI.Instance.Open(this);
+        }
     }
 
     public void CloseChest()
     {
+        if (!isOpen) return;
         isOpen = false;
         if (ChestUI.Instance != null && ChestUI.Instance.CurrentChest == this)
             ChestUI.Instance.Close();

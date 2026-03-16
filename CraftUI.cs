@@ -200,24 +200,17 @@ public class CraftUI : MonoBehaviour
 
         recipeSlotObjects.Clear();
 
-        Debug.Log($"[CraftUI] 削除予約後 childCount={recipeListParent.childCount}, tracked={recipeSlotObjects.Count}");
-
         if (RecipeKnowledgeManager.Instance == null) return;
 
         var recipeList = RecipeKnowledgeManager.Instance
             .GetKnownRecipesWithCraftability(playerInventory);
 
-        Debug.Log($"[CraftUI] recipeList件数={recipeList.Count}");
-
         foreach (var (recipe, canCraft) in recipeList)
         {
-            Debug.Log($"[CraftUI] 生成 recipe={recipe.name}");
-
             GameObject slotObj = Instantiate(recipeSlotPrefab, recipeListParent);
             recipeSlotObjects.Add(slotObj);
 
             RectTransform rt = slotObj.GetComponent<RectTransform>();
-            Debug.Log($"[CraftUI] 生成後 childCount={recipeListParent.childCount}, tracked={recipeSlotObjects.Count}, name={slotObj.name}, anchoredPos={rt.anchoredPosition}, localPos={rt.localPosition}");
 
             // アイコン
             Image icon = FindChild<Image>(slotObj, "ItemIcon");
@@ -327,23 +320,21 @@ public class CraftUI : MonoBehaviour
         {
             wbOk = false;
             var allWB = FindObjectsOfType<WorkbenchInteraction>();
-            Debug.Log($"[CraftUI] WBチェック: requiredLevel={selectedRecipe.requiredWBLevel} WB数={allWB.Length}");
+
             foreach (var wb in allWB)
             {
                 bool inRange = wb.IsPlayerInRange();
-                Debug.Log($"[CraftUI] WB={wb.gameObject.name} level={wb.wbLevel} inRange={inRange}");
+
                 if (wb != null && wb.wbLevel == selectedRecipe.requiredWBLevel && inRange)
                 {
                     wbOk = true;
                     break;
                 }
             }
-            Debug.Log($"[CraftUI] wbOk={wbOk}");
         }
 
         bool recipeCraft = selectedRecipe != null && selectedRecipe.CanCraft(playerInventory);
         bool notCrafting = !CraftSystem.Instance.IsCrafting;
-        Debug.Log($"[CraftUI] canCraft判定: selectedRecipe={selectedRecipe != null} recipeCraft={recipeCraft} notCrafting={notCrafting} wbOk={wbOk}");
 
         bool canCraft = selectedRecipe != null
                      && recipeCraft
@@ -351,7 +342,7 @@ public class CraftUI : MonoBehaviour
                      && wbOk;
 
         craftButton.interactable = canCraft;
-        Debug.Log($"[CraftUI] craftButton.interactable={craftButton.interactable} canCraft={canCraft}");
+
         if (cancelButton != null)
             cancelButton.interactable = CraftSystem.Instance != null
                                      && CraftSystem.Instance.IsCrafting;
@@ -365,8 +356,6 @@ public class CraftUI : MonoBehaviour
     {
         if (selectedRecipe == null) return;
         if (CraftSystem.Instance == null) return;
-
-        Debug.Log($"[CraftUI] OnCraftButtonPressed: recipe={selectedRecipe.name} craftCount={craftCount} requiredWB={selectedRecipe.requiredWBLevel}");
 
         WorkbenchInteraction nearbyWB = null;
         if (selectedRecipe.requiredWBLevel != WBLevel.None)
@@ -383,7 +372,6 @@ public class CraftUI : MonoBehaviour
 
         bool started = CraftSystem.Instance.StartCraft(selectedRecipe, craftCount, nearbyWB);
 
-        Debug.Log($"[CraftUI] StartCraft result={started}");
         if (started)
         {
             SetProgressVisible(true);

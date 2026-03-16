@@ -77,6 +77,10 @@ public class PlacementSystem : MonoBehaviour
         foreach (var wb in previewObject.GetComponentsInChildren<WorkbenchInteraction>())
             wb.enabled = false;
 
+        // ChestInteraction無効化
+        foreach (var chest in previewObject.GetComponentsInChildren<ChestInteraction>())
+            chest.enabled = false;
+
         // プレビューマテリアル適用
         if (previewMaterial != null)
         {
@@ -164,6 +168,14 @@ public class PlacementSystem : MonoBehaviour
         foreach (var wb in placed.GetComponentsInChildren<WorkbenchInteraction>())
         {
             wb.playerTransform = transform;
+        }
+
+        foreach (var chest in placed.GetComponentsInChildren<ChestInteraction>())
+        {
+            chest.playerTransform = transform;
+            chest.playerInventory = inventory;
+            chest.pickupSpawner = FindObjectOfType<PickupSpawner>();
+            chest.inventoryUI = inventoryUI;
         }
 
         // インベントリから消費

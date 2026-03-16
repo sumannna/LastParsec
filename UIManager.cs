@@ -43,6 +43,9 @@ public class UIManager : MonoBehaviour
 
         if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen)
             CraftTreeUI.Instance.Close();
+
+        if (ChestUI.Instance != null && ChestUI.Instance.IsOpen)
+            ChestUI.Instance.Close();
     }
 
     public bool IsAnyUIOpen()
@@ -50,6 +53,7 @@ public class UIManager : MonoBehaviour
         if (inventoryUI != null && inventoryUI.IsOpen) return true;
         if (craftUI != null && craftUI.IsOpen) return true;
         if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen) return true;
+        if (ChestUI.Instance != null && ChestUI.Instance.IsOpen) return true;
 
         var tables = FindObjectsOfType<ResearchTableSystem>();
         foreach (var table in tables)

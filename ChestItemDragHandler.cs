@@ -21,6 +21,7 @@ public class ChestItemDragHandler : MonoBehaviour,
     private Canvas canvas;
     private RectTransform canvasRect;
     private Image sourceIcon;
+    private TMPro.TMP_Text sourceAmountText;
 
     void Start()
     {
@@ -29,10 +30,15 @@ public class ChestItemDragHandler : MonoBehaviour,
         CacheSourceIcon();
     }
 
+    
+
     void CacheSourceIcon()
     {
         foreach (Transform child in GetComponentsInChildren<Transform>(true))
-            if (child.name == "ItemIcon") { sourceIcon = child.GetComponent<Image>(); break; }
+        {
+            if (child.name == "ItemIcon") sourceIcon = child.GetComponent<Image>();
+            if (child.name == "AmountText") sourceAmountText = child.GetComponent<TMPro.TMP_Text>();
+        }
     }
 
     public void OnBeginDrag(PointerEventData eventData)
@@ -65,6 +71,7 @@ public class ChestItemDragHandler : MonoBehaviour,
         img.preserveAspect = true;
 
         sourceIcon.gameObject.SetActive(false);
+        if (sourceAmountText != null) sourceAmountText.gameObject.SetActive(false);
         OnDrag(eventData);
     }
 
@@ -79,7 +86,7 @@ public class ChestItemDragHandler : MonoBehaviour,
     public void OnEndDrag(PointerEventData eventData)
     {
         if (dragIcon != null) { Destroy(dragIcon); dragIcon = null; }
-        if (sourceIcon != null) sourceIcon.gameObject.SetActive(true);
+        // RefreshAllで再描画されるためここでは再表示しない
 
         // インベントリへのドロップ判定
         var results = new List<RaycastResult>();
@@ -103,12 +110,28 @@ public class ChestItemDragHandler : MonoBehaviour,
     {
         if (chestSlot == null || chestSlot.item == null) return;
 
-        bool added = playerInventory.AddItemAtIndex(chestSlot.item, dropHandler.targetIndex);
-        if (!added) added = playerInventory.AddItem(chestSlot.item);
+        int amount = dragAmount > 0 ? dragAmount : chestSlot.amount;
+        int moved = 0;
 
-        if (added)
+        // 指定インデックスに空きがあれば優先
+        var slots = playerInventory.GetSlots();
+        if (dropHandler.targetIndex >= 0 && dropHandler.targetIndex < slots.Length && slots[dropHandler.targetIndex] == null)
         {
-            chestInventory.RemoveSlot(chestSlot);
+            playerInventory.AddItemAtIndex(chestSlot.item, dropHandler.targetIndex);
+            // amountをセット
+            if (slots[dropHandler.targetIndex] != null)
+                slots[dropHandler.targetIndex].amount = amount;
+            moved = amount;
+        }
+        else
+        {
+            playerInventory.AddItemAmount(chestSlot.item, amount);
+            moved = amount;
+        }
+
+        if (moved > 0)
+        {
+            chestInventory.ReduceSlot(chestSlot, moved);
             chestSlot = null;
         }
 

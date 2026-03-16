@@ -20,7 +20,6 @@ public class ChestUI : MonoBehaviour
     [Header("参照")]
     public InventoryUI inventoryUI;
     public EquipmentUI equipmentUI;
-    public SplitWindowUI splitWindowUI;
 
     private ChestInteraction currentChest;
     public ChestInteraction CurrentChest => currentChest;
@@ -28,6 +27,7 @@ public class ChestUI : MonoBehaviour
     private List<GameObject> slotObjects = new List<GameObject>();
     private bool isOpen = false;
     public bool IsOpen => isOpen;
+    private bool closedThisFrame = false;
 
     void Awake()
     {
@@ -43,17 +43,22 @@ public class ChestUI : MonoBehaviour
 
     void Update()
     {
+        closedThisFrame = false;
+
         if (!isOpen) return;
 
-        if (Input.GetKeyDown(KeyCode.E) ||
-            Input.GetKeyDown(KeyCode.Escape) ||
+        if (Input.GetKeyDown(KeyCode.Escape) ||
             Input.GetKeyDown(KeyCode.Q) ||
-            Input.GetKeyDown(KeyCode.Tab))
+            Input.GetKeyDown(KeyCode.Tab) ||
+            Input.GetKeyDown(KeyCode.E))
         {
+            closedThisFrame = true;
             Close();
             return;
         }
     }
+
+    public bool ClosedThisFrame => closedThisFrame;
 
     public void Open(ChestInteraction chest)
     {
@@ -77,19 +82,31 @@ public class ChestUI : MonoBehaviour
 
     public void Close()
     {
+        if (!isOpen) return;
+        Debug.Log("[ChestUI] Close開始");
         isOpen = false;
-        currentChest?.CloseChest();
+
+        var chest = currentChest;
         currentChest = null;
+        chest?.CloseChest();
 
         if (chestPanel != null) chestPanel.SetActive(false);
 
         if (inventoryUI != null && inventoryUI.IsOpen)
+        {
+            Debug.Log("[ChestUI] inventoryUI.CloseInventory呼び出し");
             inventoryUI.CloseInventory();
+        }
+        else
+        {
+            Debug.Log($"[ChestUI] inventoryUI.CloseInventoryスキップ inventoryUI={inventoryUI != null} IsOpen={inventoryUI?.IsOpen}");
+        }
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
         ClearSlots();
+        Debug.Log("[ChestUI] Close完了");
     }
 
     public void RefreshAll()

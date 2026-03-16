@@ -27,6 +27,7 @@ public class WorkbenchInteraction : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.E))
         {
+            if (ChestUI.Instance != null && (ChestUI.Instance.IsOpen || ChestUI.Instance.ClosedThisFrame)) return;
             if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen)
                 CraftTreeUI.Instance.Close();
             else if (UIManager.Instance == null || (!UIManager.Instance.IsAnyUIOpen()))

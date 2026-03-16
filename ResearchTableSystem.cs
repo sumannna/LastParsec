@@ -85,6 +85,7 @@ public class ResearchTableSystem : MonoBehaviour
         // EÉLÅ[Ç≈äJï¬
         if (IsPlayerInRange() && Input.GetKeyDown(KeyCode.E))
         {
+            if (ChestUI.Instance != null && (ChestUI.Instance.IsOpen || ChestUI.Instance.ClosedThisFrame)) return;
             if (isOpen) ClosePanel();
             else if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
             {
