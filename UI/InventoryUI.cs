@@ -68,6 +68,7 @@ public class InventoryUI : MonoBehaviour
     void OpenInventory()
     {
         isOpen = true;
+        lastSlotCount = inventory.GetSlots().Length;
         inventoryPanel.SetActive(true);
         equipmentUI.equipmentPanel.SetActive(true);
         if (splitWindowUI != null) splitWindowUI.gameObject.SetActive(true);
@@ -279,5 +280,39 @@ public class InventoryUI : MonoBehaviour
                 fillImage.rectTransform.localScale = new Vector3(ratio, 1f, 1f);
             }
         }
+    }
+
+    public void AddIceMelterHandlers(IceMelter machine, IceMelterUI ui)
+    {
+        var slots = inventory.GetSlots();
+        for (int i = 0; i < slotObjects.Count && i < slots.Length; i++)
+        {
+            if (slotObjects[i] == null) continue;
+            var handler = slotObjects[i].AddComponent<IceMelterInventorySlotClickHandler>();
+            handler.Init(machine, inventory, i, ui);
+        }
+    }
+
+    public void RemoveIceMelterHandlers()
+    {
+        foreach (var obj in slotObjects)
+        {
+            if (obj == null) continue;
+            var h = obj.GetComponent<IceMelterInventorySlotClickHandler>();
+            if (h != null) Destroy(h);
+        }
+    }
+
+    public void OpenInventoryExternalNoEquipment()
+    {
+        if (isOpen) return;
+        isOpen = true;
+        lastSlotCount = inventory.GetSlots().Length;
+        inventoryPanel.SetActive(true);
+        // equipmentUIは開かない
+        if (splitWindowUI != null) splitWindowUI.gameObject.SetActive(true);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        RefreshAll();
     }
 }
