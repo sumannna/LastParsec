@@ -63,7 +63,7 @@ public class FillingMachineUI : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         if (inventoryUI != null && !inventoryUI.IsOpen)
-            inventoryUI.OpenInventoryExternal();
+            inventoryUI.OpenInventoryExternalNoEquipment();
         machine.OnSlotsChanged += RefreshSlots;
         RefreshAll();
     }

@@ -8,13 +8,20 @@ public class FillingMachineInteraction : MonoBehaviour
 
     void Update()
     {
-        if (!IsPlayerInRange()) return;
-        if (!Input.GetKeyDown(KeyCode.E)) return;
+        bool ePressed = Input.GetKeyDown(KeyCode.E);
+        bool tabPressed = Input.GetKeyDown(KeyCode.Tab);
+        if (!ePressed && !tabPressed) return;
         if (FillingMachineUI.Instance == null) return;
 
         if (FillingMachineUI.Instance.IsOpen)
+        {
             FillingMachineUI.Instance.Close();
-        else if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
+            return;
+        }
+
+        if (!ePressed) return;
+        if (!IsPlayerInRange()) return;
+        if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
             UIManager.Instance?.OpenFillingMachine(this);
     }
 

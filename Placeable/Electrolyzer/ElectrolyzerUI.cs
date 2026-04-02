@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -9,8 +8,6 @@ public class ElectrolyzerUI : MonoBehaviour
 
     [Header("UI")]
     public GameObject panel;
-    public Transform slotsParent;
-    public GameObject slotPrefab;
     public Button toggleButton;
     public TextMeshProUGUI toggleButtonText;
     public Button closeButton;
@@ -26,11 +23,7 @@ public class ElectrolyzerUI : MonoBehaviour
     public TextMeshProUGUI waterAmountText;
     public float maxDisplayAmount = 50f;
 
-    [Header("éQè∆")]
-    public InventoryUI inventoryUI;
-
     private Electrolyzer currentMachine;
-    private List<GameObject> slotObjects = new List<GameObject>();
     public bool IsOpen { get; private set; }
 
     void Awake()
@@ -49,7 +42,7 @@ public class ElectrolyzerUI : MonoBehaviour
     void Update()
     {
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.E))
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Tab))
             Close();
         UpdateStatus();
     }
@@ -61,9 +54,7 @@ public class ElectrolyzerUI : MonoBehaviour
         panel.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
-        if (inventoryUI != null && !inventoryUI.IsOpen)
-            inventoryUI.OpenInventoryExternal();
-        machine.OnSlotsChanged += RefreshSlots;
+        machine.OnSlotsChanged += RefreshAll;
         RefreshAll();
     }
 
@@ -71,49 +62,18 @@ public class ElectrolyzerUI : MonoBehaviour
     {
         if (!IsOpen) return;
         if (currentMachine != null)
-            currentMachine.OnSlotsChanged -= RefreshSlots;
+            currentMachine.OnSlotsChanged -= RefreshAll;
         IsOpen = false;
         panel.SetActive(false);
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
-        if (inventoryUI != null && inventoryUI.IsOpen)
-            inventoryUI.CloseInventory();
-        ClearSlots();
         currentMachine = null;
     }
 
     void RefreshAll()
     {
-        RefreshSlots();
         UpdateToggleButton();
         UpdateStatus();
-    }
-
-    void RefreshSlots()
-    {
-        ClearSlots();
-        if (currentMachine == null) return;
-
-        for (int i = 0; i < currentMachine.slotCount; i++)
-        {
-            GameObject obj = Instantiate(slotPrefab, slotsParent);
-            slotObjects.Add(obj);
-            Inventory.Slot slot = currentMachine.slots[i];
-
-            Image icon = FindChild<Image>(obj, "ItemIcon");
-            TextMeshProUGUI amount = FindChild<TextMeshProUGUI>(obj, "AmountText");
-            if (slot != null)
-            {
-                if (icon != null) { icon.sprite = slot.item.icon; icon.color = Color.white; }
-                if (amount != null) amount.text = slot.amount > 1 ? slot.amount.ToString() : "";
-            }
-            else
-            {
-                if (icon != null) icon.color = Color.clear;
-                if (amount != null) amount.text = "";
-            }
-        }
-        UpdateToggleButton();
     }
 
     void UpdateToggleButton()
@@ -167,19 +127,5 @@ public class ElectrolyzerUI : MonoBehaviour
         if (currentMachine == null) return;
         currentMachine.SetOn(!currentMachine.IsOn);
         UpdateToggleButton();
-    }
-
-    void ClearSlots()
-    {
-        foreach (var obj in slotObjects)
-            if (obj != null) Destroy(obj);
-        slotObjects.Clear();
-    }
-
-    T FindChild<T>(GameObject root, string name) where T : Component
-    {
-        foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
-            if (child.name == name) return child.GetComponent<T>();
-        return null;
     }
 }

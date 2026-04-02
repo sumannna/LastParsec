@@ -9,14 +9,14 @@ using UnityEngine;
 public class IceMelter : MonoBehaviour, IPowerConsumer
 {
     [Header("設定")]
-    public float powerConsumption = 1f;       // kW
-    public float processTime = 5f;            // 1回の処理秒数
-    public float waterPerIce = 1f;            // 氷1個→水xL
+    public float powerConsumption = 1f;
+    public float processTime = 5f;
+    public float waterPerIce = 1f;
     public int slotCount = 5;
-    public ItemData iceItemData;              // 氷アイテム
+    public ItemData iceItemData;
 
     [Header("接続")]
-    public PipeConnector outletConnector;     // パイプ出口
+    public PipeConnector outletConnector;
     public ElectricConnector electricConnector;
 
     [Header("液体定義")]
@@ -26,12 +26,13 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
     public string ConsumerName => "IceMelter";
     public float PowerConsumption => powerConsumption;
     public bool IsRunning => isOn && isPowered;
+    public bool IsOn => isOn;
+    public bool IsPowered => isPowered;
 
     private bool isOn = false;
     private bool isPowered = false;
     private Coroutine processCoroutine;
 
-    public bool IsOn => isOn;
     public Inventory.Slot[] slots;
 
     void Awake()
@@ -49,7 +50,6 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
         PowerGridManager.Instance?.UnregisterConsumer(this);
     }
 
-    // IPowerConsumer
     public void OnPowerSupplied()
     {
         isPowered = true;
@@ -81,7 +81,6 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
     {
         while (isOn && isPowered)
         {
-            // 氷スロットを確認
             Inventory.Slot iceSlot = FindIceSlot();
             if (iceSlot == null)
             {
@@ -89,24 +88,21 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
                 yield break;
             }
 
-            // パイプ接続確認
             if (!outletConnector.IsConnected)
             {
                 OnStatusChanged?.Invoke("パイプ未接続");
                 yield return new WaitForSeconds(1f);
                 continue;
             }
-            OnStatusChanged?.Invoke(isOn && isPowered ? "稼働中" : "停止中");
+            OnStatusChanged?.Invoke("稼働中");
 
             yield return new WaitForSeconds(processTime);
 
-            // 再確認
             iceSlot = FindIceSlot();
             if (iceSlot == null || !isOn || !isPowered) break;
 
-            // 氷消費→水をパイプへ
             ReduceSlot(iceSlot, 1);
-            // 接続先機械に液体を直接送る
+
             var fillingMachine = outletConnector.GetConnectedMachine<FillingMachine>();
             var electrolyzer = outletConnector.GetConnectedMachine<Electrolyzer>();
 
@@ -118,7 +114,6 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
                 Debug.Log("[IceMelter] 接続先機械が見つかりません");
 
             outletConnector.PushLiquid(waterLiquid, waterPerIce);
-
             OnSlotsChanged?.Invoke();
         }
         processCoroutine = null;
@@ -155,6 +150,8 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
         }
         return false;
     }
+
+    public void NotifySlotsChanged() => OnSlotsChanged?.Invoke();
 
     public event System.Action OnSlotsChanged;
     public event System.Action<string> OnStatusChanged;

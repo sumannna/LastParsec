@@ -11,30 +11,22 @@ public class IceMelterInteraction : MonoBehaviour
 
     void Update()
     {
-        if (!IsPlayerInRange()) return;
-        if (!Input.GetKeyDown(KeyCode.E)) return;
+        bool ePressed = Input.GetKeyDown(KeyCode.E);
+        bool tabPressed = Input.GetKeyDown(KeyCode.Tab);
+        if (!ePressed && !tabPressed) return;
 
-        if (Input.GetKeyDown(KeyCode.E))
+        // 閉じる：範囲チェック不要
+        if (IceMelterUI.Instance != null && IceMelterUI.Instance.IsOpen)
         {
-            float dist = playerTransform != null
-                ? Vector3.Distance(playerTransform.position, transform.position)
-                : -1f;
-            Debug.Log($"[IceMelterInteraction] E pressed / inRange={IsPlayerInRange()} / dist={dist:F2} / IceMelterUI.Instance={IceMelterUI.Instance != null} / IsOpen={IceMelterUI.Instance?.IsOpen} / IsAnyUIOpen={UIManager.Instance?.IsAnyUIOpen()}");
-        }
-
-        if (IceMelterUI.Instance == null)
-        {
-            Debug.Log("[IceMelterInteraction] IceMelterUI.Instance が null");
+            IceMelterUI.Instance.Close();
             return;
         }
 
-        if (IceMelterUI.Instance.IsOpen)
-            IceMelterUI.Instance.Close();
-        else if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
-        {
-            Debug.Log("[IceMelterInteraction] OpenIceMelter 呼び出し");
+        // Open: Eキーのみ、Tabでは開かない
+        if (!ePressed) return;
+        if (!IsPlayerInRange()) return;
+        if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
             UIManager.Instance?.OpenIceMelter(this);
-        }
     }
 
     public bool IsPlayerInRange()

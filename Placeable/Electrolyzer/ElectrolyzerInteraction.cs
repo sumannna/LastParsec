@@ -8,13 +8,20 @@ public class ElectrolyzerInteraction : MonoBehaviour
 
     void Update()
     {
-        if (!IsPlayerInRange()) return;
-        if (!Input.GetKeyDown(KeyCode.E)) return;
+        bool ePressed = Input.GetKeyDown(KeyCode.E);
+        bool tabPressed = Input.GetKeyDown(KeyCode.Tab);
+        if (!ePressed && !tabPressed) return;
         if (ElectrolyzerUI.Instance == null) return;
 
         if (ElectrolyzerUI.Instance.IsOpen)
+        {
             ElectrolyzerUI.Instance.Close();
-        else if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
+            return;
+        }
+
+        if (!ePressed) return;
+        if (!IsPlayerInRange()) return;
+        if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
             UIManager.Instance?.OpenElectrolyzer(this);
     }
 
