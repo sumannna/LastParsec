@@ -80,6 +80,6 @@ public class HandCrankerUI : MonoBehaviour
 
         if (chargeText != null)
             chargeText.text =
-                $"{currentCranker.CurrentCharge:F1} / {currentCranker.MaxCapacity:F1} kWh";
+                $"{currentCranker.CurrentCharge:F1} / {currentCranker.MaxCapacity:F1} kW";
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -18,6 +19,10 @@ public class IceMelterUI : MonoBehaviour
     [Header("参照")]
     public InventoryUI inventoryUI;
 
+    [Header("状態表示")]
+    public TextMeshProUGUI powerStatusText;
+    public TextMeshProUGUI powerConsumptionText;
+
     private IceMelter currentMachine;
     private List<GameObject> slotObjects = new List<GameObject>();
     public bool IsOpen { get; private set; }
@@ -37,16 +42,12 @@ public class IceMelterUI : MonoBehaviour
         closeButton.onClick.AddListener(Close);
     }
 
-    private bool openedThisFrame = false;
-
     void Update()
     {
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Tab))
             Close();
-        if (!openedThisFrame && Input.GetKeyDown(KeyCode.E))
-            Close();
-        openedThisFrame = false;
+        UpdateStatus();
     }
 
     public void Open(IceMelter machine)
@@ -54,13 +55,14 @@ public class IceMelterUI : MonoBehaviour
         Debug.Log($"[IceMelterUI] Open called / panel={panel != null} / machine={machine != null}");
         currentMachine = machine;
         IsOpen = true;
-        openedThisFrame = true;
         panel.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         if (inventoryUI != null && !inventoryUI.IsOpen)
-            inventoryUI.OpenInventoryExternal();
+            inventoryUI.OpenInventoryExternalNoEquipment();
         machine.OnSlotsChanged += RefreshSlots;
+        machine.OnStatusChanged += UpdateStatus;
+        UpdateStatus(machine.IsPowered ? "待機中" : "未接続");
         RefreshAll();
         Debug.Log("[IceMelterUI] Open complete");
     }
@@ -69,13 +71,17 @@ public class IceMelterUI : MonoBehaviour
     {
         if (!IsOpen) return;
         if (currentMachine != null)
+        {
             currentMachine.OnSlotsChanged -= RefreshSlots;
+            currentMachine.OnStatusChanged -= UpdateStatus;
+        }
         IsOpen = false;
         panel.SetActive(false);
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
         if (inventoryUI != null && inventoryUI.IsOpen)
             inventoryUI.CloseInventory();
+        inventoryUI?.RemoveIceMelterHandlers();
         ClearSlots();
         currentMachine = null;
     }
@@ -84,6 +90,7 @@ public class IceMelterUI : MonoBehaviour
     {
         RefreshSlots();
         UpdateToggleButton();
+        UpdateStatus();
     }
 
     public void RefreshSlots()
@@ -109,13 +116,19 @@ public class IceMelterUI : MonoBehaviour
             }
 
             int capturedIndex = i;
-            DropHandler drop = obj.AddComponent<DropHandler>();
-            drop.inventory = FindObjectOfType<Inventory>();
-            drop.inventoryUI = inventoryUI;
-            drop.targetSlot = slot;
-            drop.targetIndex = capturedIndex;
+            Inventory inv = FindObjectOfType<Inventory>();
+
+            IceMelterDropHandler drop = obj.AddComponent<IceMelterDropHandler>();
+            drop.Init(currentMachine, capturedIndex, inv, this);
+
+            IceMelterItemDragHandler drag = obj.AddComponent<IceMelterItemDragHandler>();
+            drag.Init(currentMachine, capturedIndex, inv, this);
+
+            IceMelterSlotClickHandler click = obj.AddComponent<IceMelterSlotClickHandler>();
+            click.Init(currentMachine, capturedIndex, inv, this);
         }
         UpdateToggleButton();
+        if (IsOpen) inventoryUI?.AddIceMelterHandlers(currentMachine, this);
     }
 
     void UpdateToggleButton()
@@ -124,9 +137,31 @@ public class IceMelterUI : MonoBehaviour
         toggleButtonText.text = currentMachine.IsOn ? "ON" : "OFF";
     }
 
+    void UpdateStatus()
+    {
+        if (currentMachine == null) return;
+        if (powerStatusText != null)
+            powerStatusText.text = currentMachine.IsPowered ? "電源：接続済" : "電源：未接続";
+        if (powerConsumptionText != null)
+            powerConsumptionText.text = $"消費電力：{currentMachine.PowerConsumption}kWh";
+    }
+
     void OnTogglePressed()
     {
         if (currentMachine == null) return;
+        if (!currentMachine.IsOn)
+        {
+            if (currentMachine.FindIceSlot() == null)
+            {
+                UpdateStatus("氷がありません");
+                return;
+            }
+            if (!currentMachine.outletConnector.IsConnected)
+            {
+                UpdateStatus("パイプ未接続");
+                return;
+            }
+        }
         currentMachine.SetOn(!currentMachine.IsOn);
         UpdateToggleButton();
     }
@@ -138,10 +173,27 @@ public class IceMelterUI : MonoBehaviour
         slotObjects.Clear();
     }
 
+    public void RequestInventoryRefresh()
+    {
+        StartCoroutine(DoInventoryRefresh());
+    }
+
+    private IEnumerator DoInventoryRefresh()
+    {
+        yield return null;
+        inventoryUI?.RefreshAll();
+        if (IsOpen) inventoryUI?.AddIceMelterHandlers(currentMachine, this);
+    }
+
     T FindChild<T>(GameObject root, string name) where T : Component
     {
         foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
             if (child.name == name) return child.GetComponent<T>();
         return null;
+    }
+
+    void UpdateStatus(string msg)
+    {
+        if (powerStatusText != null) powerStatusText.text = msg;
     }
 }

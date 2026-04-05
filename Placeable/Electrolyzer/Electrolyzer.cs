@@ -11,7 +11,6 @@ public class Electrolyzer : MonoBehaviour, IPowerConsumer
     public float processTime = 5f;
     public float waterPerProcess = 1f;    // Á”ï…—Ê L
     public float outputPerProcess = 1f;   // _‘fE…‘f‚»‚ê‚¼‚ê‚Ì¶¬—Ê L
-    public int slotCount = 5;
 
     [Header("Ú‘±")]
     public PipeConnector inletConnector;     // “üŒûi…j
@@ -34,7 +33,7 @@ public class Electrolyzer : MonoBehaviour, IPowerConsumer
     private Coroutine processCoroutine;
 
     public bool IsOn => isOn;
-    public Inventory.Slot[] slots;
+    public ElectricConnector Connector => electricConnector;
 
     public event System.Action OnSlotsChanged;
     public float storedWater = 0f;
@@ -55,7 +54,6 @@ public class Electrolyzer : MonoBehaviour, IPowerConsumer
 
     void Awake()
     {
-        slots = new Inventory.Slot[slotCount];
     }
 
     void Start()
@@ -114,16 +112,21 @@ public class Electrolyzer : MonoBehaviour, IPowerConsumer
             storedWater -= waterPerProcess;
             storedWater = Mathf.Max(0f, storedWater);
 
-            // _‘fE…‘f‚ğƒpƒCƒv‚Ö‹Ÿ‹‹
-            bool oxyOk = oxygenOutlet.IsConnected &&
-                         oxygenOutlet.PushLiquid(oxygenLiquid, outputPerProcess);
-            bool hydOk = hydrogenOutlet.IsConnected &&
-                         hydrogenOutlet.PushLiquid(hydrogenLiquid, outputPerProcess);
+            // _‘fFoxygenOutlet‚ªÚ‘±‚³‚ê‚Ä‚¢‚ê‚Î‹Ÿ‹‹
+            if (oxygenOutlet.IsConnected && oxygenOutlet.PushLiquid(oxygenLiquid, outputPerProcess))
+            {
+                var fm = oxygenOutlet.GetConnectedMachine<FillingMachine>();
+                if (fm != null) fm.ReceiveLiquid(oxygenLiquid, outputPerProcess);
+            }
 
-            if (!oxyOk) Debug.Log("[Electrolyzer] _‘fƒpƒCƒv‚Ö‚Ì‹Ÿ‹‹¸”s");
-            if (!hydOk) Debug.Log("[Electrolyzer] …‘fƒpƒCƒv‚Ö‚Ì‹Ÿ‹‹¸”s");
+            // …‘fFhydrogenOutlet‚ªÚ‘±‚³‚ê‚Ä‚¢‚ê‚Î‹Ÿ‹‹A–¢Ú‘±‚È‚çÁ–Å
+            if (hydrogenOutlet.IsConnected && hydrogenOutlet.PushLiquid(hydrogenLiquid, outputPerProcess))
+            {
+                var fm = hydrogenOutlet.GetConnectedMachine<FillingMachine>();
+                if (fm != null) fm.ReceiveLiquid(hydrogenLiquid, outputPerProcess);
+            }
 
-            Debug.Log($"[Electrolyzer] ˆ—Š®—¹ O2:{outputPerProcess}L H2:{outputPerProcess}L");
+            Debug.Log($"[Electrolyzer] ˆ—Š®—¹ O2¨{(oxygenOutlet.IsConnected ? "‹Ÿ‹‹" : "Á–Å")} / H2¨{(hydrogenOutlet.IsConnected ? "‹Ÿ‹‹" : "Á–Å")}");
             OnSlotsChanged?.Invoke();
         }
         processCoroutine = null;
@@ -131,22 +134,7 @@ public class Electrolyzer : MonoBehaviour, IPowerConsumer
 
     bool CanProcess()
     {
-        return storedWater >= waterPerProcess;
+        return storedWater >= waterPerProcess && oxygenOutlet.IsConnected;
     }
 
-    public bool AddItem(ItemData item)
-    {
-        for (int i = 0; i < slotCount; i++)
-        {
-            if (slots[i] != null && slots[i].item == item
-                && slots[i].amount < item.maxStack)
-            { slots[i].amount++; return true; }
-        }
-        for (int i = 0; i < slotCount; i++)
-        {
-            if (slots[i] == null)
-            { slots[i] = new Inventory.Slot(item, 1); return true; }
-        }
-        return false;
-    }
 }

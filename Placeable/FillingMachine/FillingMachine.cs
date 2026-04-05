@@ -10,8 +10,16 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
     [Header("設定")]
     public float powerConsumption = 1.5f;
     public float processTime = 5f;
-    public float fillAmountPerProcess = 5f; // 1回の処理で充填するL数
-    public int slotCount = 5;               // 上段・下段それぞれ5スロット
+    public float liquidPerProcess = 1f;  // 1処理で消費する液体量
+    public int slotCount = 5;
+
+    [Header("精製設定")]
+    public LiquidData waterLiquid;
+    public ItemData waterOutputItem;
+    public LiquidData oxygenLiquid;
+    public ItemData oxygenOutputItem;
+    public LiquidData hydrogenLiquid;
+    public ItemData hydrogenOutputItem;
 
     [Header("接続")]
     public PipeConnector inletConnector;
@@ -27,6 +35,7 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
     private Coroutine processCoroutine;
 
     public bool IsOn => isOn;
+    public ElectricConnector Connector => electricConnector;
     public Inventory.Slot[] inputSlots;   // 上段：空タンク
     public Inventory.Slot[] outputSlots;  // 下段：充填済みタンク
 
@@ -38,16 +47,13 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
     public float storedWater = 0f;
     public float storedOxygen = 0f;
     public float storedHydrogen = 0f;
-    public LiquidData waterLiquid;
-    public LiquidData oxygenLiquid;
-    public LiquidData hydrogenLiquid;
 
     public void ReceiveLiquid(LiquidData liquid, float amount)
     {
         if (liquid == waterLiquid) storedWater += amount;
         else if (liquid == oxygenLiquid) storedOxygen += amount;
         else if (liquid == hydrogenLiquid) storedHydrogen += amount;
-        Debug.Log($"[FillingMachine] 受信: {liquid.liquidName} {amount}L / 蓄積: W={storedWater} O={storedOxygen} H={storedHydrogen}");
+        else return;
         OnSlotsChanged?.Invoke();
     }
 
@@ -98,43 +104,28 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
     {
         while (isOn && isPowered)
         {
-            // 上段に空タンクがあるか
             Inventory.Slot inputSlot = FindInputSlot();
             if (inputSlot == null) { yield return new WaitForSeconds(1f); continue; }
-
-            // パイプ接続または蓄積量があれば処理可能
-            if (!HasStoredLiquid())
-            { yield return new WaitForSeconds(1f); continue; }
-
-            // 下段に空きがあるか
+            if (!HasStoredLiquid()) { yield return new WaitForSeconds(1f); continue; }
             if (!HasOutputSpace()) { yield return new WaitForSeconds(1f); continue; }
 
             yield return new WaitForSeconds(processTime);
 
-            // 再確認
+            if (!isOn || !isPowered) break;
+
             inputSlot = FindInputSlot();
-            if (inputSlot == null || !isOn || !isPowered) break;
-            if (!inletConnector.IsConnected || inletConnector.currentLiquidType == null) continue;
-            if (!HasOutputSpace()) continue;
+            if (inputSlot == null || !HasStoredLiquid() || !HasOutputSpace()) continue;
 
             LiquidData liquid = GetAvailableLiquid();
-            ItemData tankItem = inputSlot.item;
+            if (liquid == null) continue;
 
-            // 蓄積量を消費
-            ConsumeLiquid(liquid, fillAmountPerProcess);
             ReduceSlot(inputSlots, inputSlot, 1);
-            AddToOutput(tankItem, liquid);
+            ConsumeLiquid(liquid);
+            AddToOutput(liquid);
 
             OnSlotsChanged?.Invoke();
         }
         processCoroutine = null;
-    }
-
-    Inventory.Slot FindInputSlot()
-    {
-        foreach (var slot in inputSlots)
-            if (slot != null && slot.item != null) return slot;
-        return null;
     }
 
     bool HasOutputSpace()
@@ -144,38 +135,71 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
         return false;
     }
 
-    void AddToOutput(ItemData tankItem, LiquidData liquid)
+    LiquidData GetAvailableLiquid()
     {
-        // タンク種類と液体種に応じてインスタンスを生成
+        if (storedWater >= liquidPerProcess) return waterLiquid;
+        if (storedOxygen >= liquidPerProcess) return oxygenLiquid;
+        if (storedHydrogen >= liquidPerProcess) return hydrogenLiquid;
+        return null;
+    }
+
+    void ConsumeLiquid(LiquidData liquid)
+    {
+        if (liquid == waterLiquid) storedWater -= liquidPerProcess;
+        else if (liquid == oxygenLiquid) storedOxygen -= liquidPerProcess;
+        else if (liquid == hydrogenLiquid) storedHydrogen -= liquidPerProcess;
+        storedWater = Mathf.Max(0f, storedWater);
+        storedOxygen = Mathf.Max(0f, storedOxygen);
+        storedHydrogen = Mathf.Max(0f, storedHydrogen);
+    }
+
+    void AddToOutput(LiquidData liquid)
+    {
+        ItemData outputItem = null;
+        if (liquid == waterLiquid) outputItem = waterOutputItem;
+        else if (liquid == oxygenLiquid) outputItem = oxygenOutputItem;
+        else if (liquid == hydrogenLiquid) outputItem = hydrogenOutputItem;
+        if (outputItem == null) return;
+
+        // スタック可能なら既存スロットに積む
+        if (!(outputItem is OxygenTankData) && !(outputItem is WaterTankData))
+        {
+            for (int i = 0; i < slotCount; i++)
+            {
+                if (outputSlots[i] == null || outputSlots[i].item != outputItem) continue;
+                if (outputSlots[i].amount >= outputItem.maxStack) continue;
+                outputSlots[i].amount++;
+                Debug.Log($"[FillingMachine] 精製完了(スタック): {outputItem.itemName} x{outputSlots[i].amount}");
+                return;
+            }
+        }
+
         for (int i = 0; i < slotCount; i++)
         {
             if (outputSlots[i] != null) continue;
-            var slot = new Inventory.Slot(tankItem, 1);
+            var slot = new Inventory.Slot(outputItem, 1);
 
-            if (tankItem is OxygenTankData oxyData)
+            if (outputItem is OxygenTankData oxyData)
             {
                 var inst = new OxygenTankInstance(oxyData);
-                inst.currentOxygen = fillAmountPerProcess;
+                inst.currentOxygen = liquidPerProcess;
                 slot.tankInstance = inst;
             }
-            else if (tankItem is ThrusterTankData thrusterData)
-            {
-                var inst = new ThrusterTankInstance(thrusterData);
-                inst.currentFuel = fillAmountPerProcess;
-                slot.thrusterInstance = inst;
-            }
-            else if (tankItem is WaterTankData waterData)
+            else if (outputItem is WaterTankData waterData)
             {
                 var inst = new WaterTankInstance(waterData);
-                inst.currentWater = fillAmountPerProcess;
+                inst.currentWater = liquidPerProcess;
                 slot.waterTankInstance = inst;
             }
 
             outputSlots[i] = slot;
-            Debug.Log($"[FillingMachine] 充填完了: {tankItem.itemName} with {liquid.liquidName}");
+            Debug.Log($"[FillingMachine] 精製完了: {outputItem.itemName}");
             return;
         }
     }
+
+    bool HasStoredLiquid() => GetAvailableLiquid() != null;
+
 
     void ReduceSlot(Inventory.Slot[] slotArray, Inventory.Slot slot, int amount)
     {
@@ -203,28 +227,12 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
         return false;
     }
 
-    bool HasStoredLiquid()
+    Inventory.Slot FindInputSlot()
     {
-        return storedWater >= fillAmountPerProcess
-            || storedOxygen >= fillAmountPerProcess
-            || storedHydrogen >= fillAmountPerProcess;
-    }
-
-    LiquidData GetAvailableLiquid()
-    {
-        if (storedWater >= fillAmountPerProcess) return waterLiquid;
-        if (storedOxygen >= fillAmountPerProcess) return oxygenLiquid;
-        if (storedHydrogen >= fillAmountPerProcess) return hydrogenLiquid;
+        foreach (var slot in inputSlots)
+            if (slot != null && slot.item != null) return slot;
         return null;
     }
 
-    void ConsumeLiquid(LiquidData liquid, float amount)
-    {
-        if (liquid == waterLiquid) storedWater -= amount;
-        else if (liquid == oxygenLiquid) storedOxygen -= amount;
-        else if (liquid == hydrogenLiquid) storedHydrogen -= amount;
-        storedWater = Mathf.Max(0f, storedWater);
-        storedOxygen = Mathf.Max(0f, storedOxygen);
-        storedHydrogen = Mathf.Max(0f, storedHydrogen);
-    }
+    
 }

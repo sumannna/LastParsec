@@ -13,15 +13,19 @@ public class FillingMachineInteraction : MonoBehaviour
         if (!ePressed && !tabPressed) return;
         if (FillingMachineUI.Instance == null) return;
 
-        if (FillingMachineUI.Instance.IsOpen)
+        // 自分のUIが開いている場合のみ閉じる
+        if (FillingMachineUI.Instance.IsOpen && FillingMachineUI.Instance.CurrentMachine == fillingMachine)
         {
             FillingMachineUI.Instance.Close();
             return;
         }
 
+        // 開く：Eキー・範囲内・自分のUIが開いていない・他UIが開いていない
         if (!ePressed) return;
         if (!IsPlayerInRange()) return;
-        if (UIManager.Instance == null || !UIManager.Instance.IsAnyUIOpen())
+        if (FillingMachineUI.Instance.IsOpen) return;
+        if (FillingMachineUI.Instance.ClosedThisFrame) return;
+        if (!UIManager.Instance.IsAnyUIOpen())
             UIManager.Instance?.OpenFillingMachine(this);
     }
 

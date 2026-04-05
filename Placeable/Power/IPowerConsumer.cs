@@ -1,8 +1,10 @@
 public interface IPowerConsumer
 {
     string ConsumerName { get; }
-    float PowerConsumption { get; } // kW
+    float PowerConsumption { get; }
     bool IsRunning { get; }
-    void OnPowerSupplied();   // “d—Í‹Ÿ‹‹Žž‚ÉŒÄ‚Î‚ê‚é
-    void OnPowerCutOff();     // “d—Í•s‘«Žž‚ÉŒÄ‚Î‚ê‚é
+    bool IsOn { get; }
+    ElectricConnector Connector { get; }
+    void OnPowerSupplied();
+    void OnPowerCutOff();
 }

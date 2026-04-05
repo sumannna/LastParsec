@@ -21,6 +21,7 @@ public class FillingMachineDropHandler : MonoBehaviour, IDropHandler
         machine.inputSlots[slotIndex] = new Inventory.Slot(src.item, src.amount);
         playerInventory.RemoveSlot(src);
         drag.inventorySlot = null;
+        drag.HideSourceVisuals();
         ui?.RefreshSlots();
         FindObjectOfType<InventoryUI>()?.RefreshAll();
     }

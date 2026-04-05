@@ -46,7 +46,7 @@ public class PipeConnector : MonoBehaviour
 
     public void Disconnect()
     {
-        if (connectedTo != null)
+        if (connectedTo != null && connectedTo.gameObject != null)
         {
             connectedTo.connectedTo = null;
             connectedTo.currentFlow = 0f;

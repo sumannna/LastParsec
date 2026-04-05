@@ -9,8 +9,8 @@ public class FillingMachineUI : MonoBehaviour
 
     [Header("UI")]
     public GameObject panel;
-    public Transform inputSlotsParent;   // 上段
-    public Transform outputSlotsParent;  // 下段
+    public Transform inputSlotsParent;
+    public Transform outputSlotsParent;
     public GameObject slotPrefab;
     public Button toggleButton;
     public TextMeshProUGUI toggleButtonText;
@@ -27,12 +27,26 @@ public class FillingMachineUI : MonoBehaviour
     public TextMeshProUGUI waterAmountText;
     public TextMeshProUGUI oxygenAmountText;
     public TextMeshProUGUI hydrogenAmountText;
-    public float maxDisplayAmount = 50f; // ゲージ最大値
+    public float maxDisplayAmount = 50f;
+
+    [Header("液体定義")]
+    public LiquidData waterLiquid;
+    public LiquidData oxygenLiquid;
+    public LiquidData hydrogenLiquid;
+
+    [Header("液体ゲージ親オブジェクト")]
+    public GameObject waterGaugeRoot;
+    public GameObject oxygenGaugeRoot;
+    public GameObject hydrogenGaugeRoot;
 
     private FillingMachine currentMachine;
+    public FillingMachine CurrentMachine => currentMachine;
     private List<GameObject> inputSlotObjects = new List<GameObject>();
     private List<GameObject> outputSlotObjects = new List<GameObject>();
     public bool IsOpen { get; private set; }
+    private bool openedThisFrame = false;
+    private bool closedThisFrame = false;
+    public bool ClosedThisFrame => closedThisFrame;
 
     void Awake()
     {
@@ -49,9 +63,11 @@ public class FillingMachineUI : MonoBehaviour
 
     void Update()
     {
+        closedThisFrame = false;
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.E))
-            Close();
+        if (Input.GetKeyDown(KeyCode.Escape)) Close();
+        if (!openedThisFrame && Input.GetKeyDown(KeyCode.E)) Close();
+        openedThisFrame = false;
         UpdatePipeInfo();
     }
 
@@ -59,6 +75,7 @@ public class FillingMachineUI : MonoBehaviour
     {
         currentMachine = machine;
         IsOpen = true;
+        openedThisFrame = true;
         panel.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -71,6 +88,7 @@ public class FillingMachineUI : MonoBehaviour
     public void Close()
     {
         if (!IsOpen) return;
+        closedThisFrame = true;
         if (currentMachine != null)
             currentMachine.OnSlotsChanged -= RefreshSlots;
         IsOpen = false;
@@ -96,7 +114,6 @@ public class FillingMachineUI : MonoBehaviour
 
         Inventory playerInventory = FindObjectOfType<Inventory>();
 
-        // 上段（入力スロット）
         for (int i = 0; i < currentMachine.slotCount; i++)
         {
             GameObject obj = Instantiate(slotPrefab, inputSlotsParent);
@@ -111,9 +128,22 @@ public class FillingMachineUI : MonoBehaviour
             drop.isInputSlot = true;
             drop.playerInventory = playerInventory;
             drop.ui = this;
+
+            FillingMachineItemDragHandler drag = obj.AddComponent<FillingMachineItemDragHandler>();
+            drag.machine = currentMachine;
+            drag.slotIndex = capturedIndex;
+            drag.isInputSlot = true;
+            drag.playerInventory = playerInventory;
+            drag.ui = this;
+
+            FillingMachineSlotClickHandler click = obj.AddComponent<FillingMachineSlotClickHandler>();
+            click.machine = currentMachine;
+            click.slotIndex = capturedIndex;
+            click.isInputSlot = true;
+            click.playerInventory = playerInventory;
+            click.ui = this;
         }
 
-        // 下段（出力スロット）
         for (int i = 0; i < currentMachine.slotCount; i++)
         {
             GameObject obj = Instantiate(slotPrefab, outputSlotsParent);
@@ -121,11 +151,18 @@ public class FillingMachineUI : MonoBehaviour
             Inventory.Slot slot = currentMachine.outputSlots[i];
             SetSlotVisual(obj, slot);
 
-            // 下段はダブルクリックでインベントリへ移動
             int capturedIndex = i;
-            FillingMachineOutputClickHandler click = obj.AddComponent<FillingMachineOutputClickHandler>();
+            FillingMachineItemDragHandler drag = obj.AddComponent<FillingMachineItemDragHandler>();
+            drag.machine = currentMachine;
+            drag.slotIndex = capturedIndex;
+            drag.isInputSlot = false;
+            drag.playerInventory = playerInventory;
+            drag.ui = this;
+
+            FillingMachineSlotClickHandler click = obj.AddComponent<FillingMachineSlotClickHandler>();
             click.machine = currentMachine;
             click.slotIndex = capturedIndex;
+            click.isInputSlot = false;
             click.playerInventory = playerInventory;
             click.ui = this;
         }
@@ -163,9 +200,22 @@ public class FillingMachineUI : MonoBehaviour
                 ? "パイプ：接続済"
                 : "パイプ：未接続（蓄積量で動作可）";
 
-        UpdateGauge(waterGaugeFill, waterAmountText, currentMachine.storedWater);
-        UpdateGauge(oxygenGaugeFill, oxygenAmountText, currentMachine.storedOxygen);
-        UpdateGauge(hydrogenGaugeFill, hydrogenAmountText, currentMachine.storedHydrogen);
+        float w = currentMachine.storedWater;
+        float o = currentMachine.storedOxygen;
+        float h = currentMachine.storedHydrogen;
+
+        bool hasAny = w > 0f || o > 0f || h > 0f;
+        bool showWater = hasAny && w >= o && w >= h;
+        bool showOxygen = hasAny && !showWater && o >= h;
+        bool showHydrogen = hasAny && !showWater && !showOxygen;
+
+        if (waterGaugeRoot != null) waterGaugeRoot.SetActive(showWater);
+        if (oxygenGaugeRoot != null) oxygenGaugeRoot.SetActive(showOxygen);
+        if (hydrogenGaugeRoot != null) hydrogenGaugeRoot.SetActive(showHydrogen);
+
+        if (showWater) UpdateGauge(waterGaugeFill, waterAmountText, w);
+        if (showOxygen) UpdateGauge(oxygenGaugeFill, oxygenAmountText, o);
+        if (showHydrogen) UpdateGauge(hydrogenGaugeFill, hydrogenAmountText, h);
     }
 
     void UpdateGauge(Image fill, TextMeshProUGUI text, float value)

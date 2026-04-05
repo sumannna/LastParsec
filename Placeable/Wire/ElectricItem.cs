@@ -55,8 +55,11 @@ public class ElectricItem : MonoBehaviour
 
     void ConnectWire(ElectricConnector a, ElectricConnector b)
     {
-        if (a.IsConnected) a.Disconnect();
-        if (b.IsConnected) b.Disconnect();
+        if (a.IsConnected || b.IsConnected)
+        {
+            Debug.Log("[ElectricItem] 接続済みのコネクタには接続できません");
+            return;
+        }
 
         a.Connect(b);
 

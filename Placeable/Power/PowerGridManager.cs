@@ -20,68 +20,50 @@ public class PowerGridManager : MonoBehaviour
         Instance = this;
     }
 
-    // -----------------------------------------------
-    // 登録 / 解除
-    // -----------------------------------------------
     public void RegisterSource(IBatterySource s) { if (!sources.Contains(s)) sources.Add(s); }
     public void UnregisterSource(IBatterySource s) { sources.Remove(s); }
     public void RegisterConsumer(IPowerConsumer c) { if (!consumers.Contains(c)) consumers.Add(c); }
     public void UnregisterConsumer(IPowerConsumer c) { consumers.Remove(c); }
 
-    // -----------------------------------------------
-    // 状態取得
-    // -----------------------------------------------
     public float TotalCapacity => sources.Sum(s => s.MaxCapacity);
     public float TotalCharge => sources.Sum(s => s.CurrentCharge);
-    public float TotalConsumption => consumers.Where(c => c.IsRunning).Sum(c => c.PowerConsumption);
+    public float TotalConsumption => consumers.Where(c => c.IsOn).Sum(c => c.PowerConsumption);
     public float ChargeRatio => TotalCapacity > 0f ? TotalCharge / TotalCapacity : 0f;
 
-    // -----------------------------------------------
-    // 毎フレーム：放電 → 供給判定
-    // -----------------------------------------------
     void Update()
     {
-        float needed = TotalConsumption * Time.deltaTime; // kWh消費
-        float available = TotalCharge;
-
-        if (available >= needed)
+        foreach (var consumer in consumers)
         {
-            // 全Consumer稼働可能：消費量を各Sourceから均等放電
-            DischargeAll(needed);
-            foreach (var c in consumers)
-                c.OnPowerSupplied();
-        }
-        else
-        {
-            // 電力不足：消費電力の小さい順に優先供給、残りは停止
-            float remaining = available;
-            DischargeAll(available);
-
-            var ordered = consumers.OrderBy(c => c.PowerConsumption).ToList();
-            foreach (var c in ordered)
+            IBatterySource source = FindConnectedSource(consumer);
+            if (source == null)
             {
-                float cost = c.PowerConsumption * Time.deltaTime;
-                if (remaining >= cost)
-                {
-                    remaining -= cost;
-                    c.OnPowerSupplied();
-                }
-                else
-                {
-                    c.OnPowerCutOff();
-                }
+                consumer.OnPowerCutOff();
+                continue;
+            }
+            if (!consumer.IsOn)
+            {
+                consumer.OnPowerCutOff();
+                continue;
+            }
+            float cost = consumer.PowerConsumption * Time.deltaTime;
+            if (source.CurrentCharge >= cost)
+            {
+                source.Discharge(cost);
+                consumer.OnPowerSupplied();
+            }
+            else
+            {
+                consumer.OnPowerCutOff();
             }
         }
     }
 
-    // -----------------------------------------------
-    // 内部処理
-    // -----------------------------------------------
-    void DischargeAll(float totalKWh)
+    IBatterySource FindConnectedSource(IPowerConsumer consumer)
     {
-        if (sources.Count == 0 || totalKWh <= 0f) return;
-        float perSource = totalKWh / sources.Count;
-        foreach (var s in sources)
-            s.Discharge(perSource);
+        if (consumer.Connector == null || !consumer.Connector.IsConnected) return null;
+        ElectricConnector other = consumer.Connector.connectedTo;
+        foreach (var source in sources)
+            if (source.Connector == other) return source;
+        return null;
     }
 }

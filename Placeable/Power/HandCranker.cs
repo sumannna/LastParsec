@@ -20,6 +20,7 @@ public class HandCranker : MonoBehaviour, IBatterySource
     public float interactRange = 2f;
     public InventoryUI inventoryUI;
     public HandCrankerUI crankerUI;
+    public ElectricConnector electricConnector;
 
     public event System.Action OnChargeChanged;
 
@@ -91,6 +92,7 @@ public class HandCranker : MonoBehaviour, IBatterySource
         return Vector3.Distance(playerTransform.position, transform.position) <= interactRange;
     }
 
+    public ElectricConnector Connector => electricConnector;
     public bool IsCranking => isCranking;
 
 #if UNITY_EDITOR

@@ -28,6 +28,7 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
     public bool IsRunning => isOn && isPowered;
     public bool IsOn => isOn;
     public bool IsPowered => isPowered;
+    public ElectricConnector Connector => electricConnector;
 
     private bool isOn = false;
     private bool isPowered = false;
@@ -55,16 +56,15 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
         isPowered = true;
         if (isOn && processCoroutine == null)
             processCoroutine = StartCoroutine(ProcessRoutine());
+        else
+            OnStatusChanged?.Invoke("ë“ã@íÜ");
     }
 
     public void OnPowerCutOff()
     {
         isPowered = false;
-        if (processCoroutine != null)
-        {
-            StopCoroutine(processCoroutine);
-            processCoroutine = null;
-        }
+        if (processCoroutine != null) { StopCoroutine(processCoroutine); processCoroutine = null; }
+        OnStatusChanged?.Invoke("ñ¢ê⁄ë±");
     }
 
     public void SetOn(bool on)
@@ -111,7 +111,6 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
             else if (electrolyzer != null)
                 electrolyzer.ReceiveLiquid(waterLiquid, waterPerIce);
             else
-                Debug.Log("[IceMelter] ê⁄ë±êÊã@äBÇ™å©Ç¬Ç©ÇËÇ‹ÇπÇÒ");
 
             outletConnector.PushLiquid(waterLiquid, waterPerIce);
             OnSlotsChanged?.Invoke();
@@ -119,7 +118,7 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
         processCoroutine = null;
     }
 
-    Inventory.Slot FindIceSlot()
+    public Inventory.Slot FindIceSlot()
     {
         foreach (var slot in slots)
             if (slot != null && slot.item == iceItemData) return slot;
