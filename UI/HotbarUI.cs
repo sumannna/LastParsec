@@ -72,6 +72,12 @@ public class HotbarUI : MonoBehaviour
 
             if (slot.item is ToolData && slot.toolInstance != null)
                 SetGauge(slotObj, "TankSlotGauge", slot.toolInstance.Ratio, new Color32(255, 165, 0, 255));
+            else if (slot.item is WaterTankData)
+            {
+                Inventory.Slot invSlot = FindWaterTankSlot(slot.item as WaterTankData);
+                if (invSlot?.waterTankInstance != null)
+                    SetGauge(slotObj, "TankSlotGauge", invSlot.waterTankInstance.Ratio, new Color32(0, 150, 255, 255));
+            }
         }
     }
 
@@ -154,6 +160,12 @@ public class HotbarUI : MonoBehaviour
             // 耐久ゲージ（ToolInstance）
             if (slot.item is ToolData && slot.toolInstance != null)
                 SetGauge(slotObj, "TankSlotGauge", slot.toolInstance.Ratio, new Color32(255, 165, 0, 255));
+            else if (slot.item is WaterTankData)
+            {
+                Inventory.Slot invSlot = FindWaterTankSlot(slot.item as WaterTankData);
+                if (invSlot?.waterTankInstance != null)
+                    SetGauge(slotObj, "TankSlotGauge", invSlot.waterTankInstance.Ratio, new Color32(0, 150, 255, 255));
+            }
             else
             {
                 Transform gauge = FindChildTransform(slotObj, "TankSlotGauge");
@@ -190,6 +202,14 @@ public class HotbarUI : MonoBehaviour
         return null;
     }
 
+    Inventory.Slot FindWaterTankSlot(WaterTankData tankData)
+    {
+        if (inventory == null) return null;
+        foreach (var slot in inventory.GetSlots())
+            if (slot != null && slot.item == tankData) return slot;
+        return null;
+
+    }
     void SetGauge(GameObject root, string gaugeName, float ratio, Color32 color)
     {
         Transform gaugeTransform = FindChildTransform(root, gaugeName);
