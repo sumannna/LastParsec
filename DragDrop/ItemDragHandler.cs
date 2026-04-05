@@ -336,7 +336,7 @@ public class ItemDragHandler : MonoBehaviour,
     // ビジュアル制御
     // -----------------------------------------------
 
-    void HideSourceVisuals()
+    public void HideSourceVisuals()
     {
         if (sourceIcon != null) sourceIcon.gameObject.SetActive(false);
         if (sourceGaugeObject != null) sourceGaugeObject.SetActive(false);
