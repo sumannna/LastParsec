@@ -25,16 +25,18 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
     public PipeConnector inletConnector;
     public ElectricConnector electricConnector;
 
+    [Header("入力受け入れアイテム")]
+    public ItemData[] acceptableInputItems;
+
     // IPowerConsumer
     public string ConsumerName => "FillingMachine";
     public float PowerConsumption => powerConsumption;
     public bool IsRunning => isOn && isPowered;
-
+    public bool IsOn => isOn;
+    public bool IsConsuming => isOn && isPowered && FindInputSlot() != null && HasStoredLiquid() && HasOutputSpace();
     private bool isOn = false;
     private bool isPowered = false;
     private Coroutine processCoroutine;
-
-    public bool IsOn => isOn;
     public ElectricConnector Connector => electricConnector;
     public Inventory.Slot[] inputSlots;   // 上段：空タンク
     public Inventory.Slot[] outputSlots;  // 下段：充填済みタンク
@@ -182,7 +184,6 @@ public class FillingMachine : MonoBehaviour, IPowerConsumer
             if (outputItem is OxygenTankData oxyData)
             {
                 var inst = new OxygenTankInstance(oxyData);
-                inst.currentOxygen = liquidPerProcess;
                 slot.tankInstance = inst;
             }
             else if (outputItem is WaterTankData waterData)

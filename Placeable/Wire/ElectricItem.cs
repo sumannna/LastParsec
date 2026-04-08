@@ -9,6 +9,7 @@ public class ElectricItem : MonoBehaviour
     public Hotbar hotbar;
     public Camera playerCamera;
     public InventoryUI inventoryUI;
+    [SerializeField] private HotbarUI hotbarUI;
 
     [Header("ê›íË")]
     public float reachDistance = 5f;
@@ -23,7 +24,7 @@ public class ElectricItem : MonoBehaviour
 
     void Update()
     {
-        if (inventoryUI != null && inventoryUI.IsOpen) return;
+        if (UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen()) return;
 
         Hotbar.Slot selected = hotbar?.GetSelected();
         if (selected?.item != electricItemData)
@@ -75,7 +76,9 @@ public class ElectricItem : MonoBehaviour
         }
 
         CreatePersistentLine(a.transform.position, b.transform.position);
+        hotbarUI?.RefreshAll();
         Debug.Log($"[ElectricItem] ê⁄ë±äÆóπ: {a.gameObject.name} <-> {b.gameObject.name}");
+        FindObjectOfType<HotbarUI>()?.RefreshAll();
     }
 
     ElectricConnector GetLookedConnector()

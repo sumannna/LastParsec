@@ -10,6 +10,7 @@ public class PipeItem : MonoBehaviour
     public Hotbar hotbar;
     public Camera playerCamera;
     public InventoryUI inventoryUI;
+    [SerializeField] private HotbarUI hotbarUI;
 
     [Header("設定")]
     public float reachDistance = 5f;
@@ -24,7 +25,7 @@ public class PipeItem : MonoBehaviour
 
     void Update()
     {
-        if (inventoryUI != null && inventoryUI.IsOpen) return;
+        if (UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen()) return;
 
         // ホットバーの選択アイテムがPipeItemDataでなければ無効
         Hotbar.Slot selected = hotbar?.GetSelected();
@@ -83,7 +84,9 @@ public class PipeItem : MonoBehaviour
 
         // 接続ラインを永続表示
         CreatePersistentLine(a.transform.position, b.transform.position);
+        hotbarUI?.RefreshAll();
         Debug.Log($"[PipeItem] 接続完了: {a.gameObject.name} <-> {b.gameObject.name}");
+        FindObjectOfType<HotbarUI>()?.RefreshAll();
     }
 
     PipeConnector GetLookedConnector()

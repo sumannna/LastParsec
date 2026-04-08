@@ -27,6 +27,7 @@ public class IceMelter : MonoBehaviour, IPowerConsumer
     public float PowerConsumption => powerConsumption;
     public bool IsRunning => isOn && isPowered;
     public bool IsOn => isOn;
+    public bool IsConsuming => isOn && isPowered && FindIceSlot() != null;
     public bool IsPowered => isPowered;
     public ElectricConnector Connector => electricConnector;
 

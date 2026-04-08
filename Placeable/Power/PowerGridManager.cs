@@ -45,10 +45,12 @@ public class PowerGridManager : MonoBehaviour
                 consumer.OnPowerCutOff();
                 continue;
             }
-            float cost = consumer.PowerConsumption * Time.deltaTime;
-            if (source.CurrentCharge >= cost)
+            float cost = consumer.IsConsuming
+                ? consumer.PowerConsumption * Time.deltaTime
+                : 0f;
+            if (cost <= 0f || source.CurrentCharge >= cost)
             {
-                source.Discharge(cost);
+                if (cost > 0f) source.Discharge(cost);
                 consumer.OnPowerSupplied();
             }
             else

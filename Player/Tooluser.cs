@@ -17,8 +17,8 @@ public class ToolUser : MonoBehaviour
     void Update()
     {
         bool isDead = vitalSystem != null && vitalSystem.IsDead;
-        bool inventoryOpen = inventoryUI != null && inventoryUI.IsOpen;
-        if (isDead || inventoryOpen) return;
+        bool anyUIOpen = UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen();
+        if (isDead || anyUIOpen) return;
 
         if (!Input.GetMouseButtonDown(0)) return;
 

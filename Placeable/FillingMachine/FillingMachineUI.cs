@@ -41,8 +41,14 @@ public class FillingMachineUI : MonoBehaviour
 
     private FillingMachine currentMachine;
     public FillingMachine CurrentMachine => currentMachine;
+
     private List<GameObject> inputSlotObjects = new List<GameObject>();
     private List<GameObject> outputSlotObjects = new List<GameObject>();
+
+    // 入力・出力スロットの ISlotOwner（RefreshSlots で毎回生成）
+    private ISlotOwner currentInputOwner;
+    private ISlotOwner currentOutputOwner;
+
     public bool IsOpen { get; private set; }
     private bool openedThisFrame = false;
     private bool closedThisFrame = false;
@@ -81,7 +87,7 @@ public class FillingMachineUI : MonoBehaviour
         Cursor.visible = true;
         if (inventoryUI != null && !inventoryUI.IsOpen)
             inventoryUI.OpenInventoryExternalNoEquipment();
-        machine.OnSlotsChanged += RefreshSlots;
+        machine.OnSlotsChanged += () => StartCoroutine(DelayedRefreshSlots());
         RefreshAll();
     }
 
@@ -97,8 +103,11 @@ public class FillingMachineUI : MonoBehaviour
         Cursor.visible = false;
         if (inventoryUI != null && inventoryUI.IsOpen)
             inventoryUI.CloseInventory();
+        inventoryUI?.RemoveMachineHandlers();
         ClearSlots();
         currentMachine = null;
+        currentInputOwner = null;
+        currentOutputOwner = null;
     }
 
     void RefreshAll()
@@ -112,75 +121,129 @@ public class FillingMachineUI : MonoBehaviour
         ClearSlots();
         if (currentMachine == null) return;
 
-        Inventory playerInventory = FindObjectOfType<Inventory>();
+        Inventory playerInventory = inventoryUI?.inventory;
 
+        // ── 入力スロット用 Owner（全アイテム受け入れ、読み書き可）
+        // onChanged は同期呼び出しすると dragIcon が残るバグになるため 1 フレーム遅延する。
+        currentInputOwner = new ArraySlotOwner(
+            currentMachine.inputSlots,
+            false,
+            item => currentMachine.acceptableInputItems != null
+                 && System.Array.IndexOf(currentMachine.acceptableInputItems, item) >= 0,
+            () => StartCoroutine(DelayedRefreshSlots())
+        );
+
+        // ── 出力スロット用 Owner（読み取り専用：ドロップ不可、ドラッグのみ可）
+        currentOutputOwner = new ArraySlotOwner(
+            currentMachine.outputSlots,
+            true,
+            null,
+            () => StartCoroutine(DelayedRefreshSlots())
+        );
+
+        // ── 入力スロット
         for (int i = 0; i < currentMachine.slotCount; i++)
         {
             GameObject obj = Instantiate(slotPrefab, inputSlotsParent);
             inputSlotObjects.Add(obj);
+
             Inventory.Slot slot = currentMachine.inputSlots[i];
             SetSlotVisual(obj, slot);
 
             int capturedIndex = i;
-            FillingMachineDropHandler drop = obj.AddComponent<FillingMachineDropHandler>();
-            drop.machine = currentMachine;
-            drop.slotIndex = capturedIndex;
-            drop.isInputSlot = true;
-            drop.playerInventory = playerInventory;
-            drop.ui = this;
 
-            FillingMachineItemDragHandler drag = obj.AddComponent<FillingMachineItemDragHandler>();
-            drag.machine = currentMachine;
-            drag.slotIndex = capturedIndex;
-            drag.isInputSlot = true;
-            drag.playerInventory = playerInventory;
-            drag.ui = this;
+            // ドロップハンドラ（インベントリ/ホットバー→充填機 Input）
+            MachineDropHandler drop = obj.AddComponent<MachineDropHandler>();
+            drop.Init(currentInputOwner, capturedIndex, playerInventory, inventoryUI);
 
-            FillingMachineSlotClickHandler click = obj.AddComponent<FillingMachineSlotClickHandler>();
-            click.machine = currentMachine;
-            click.slotIndex = capturedIndex;
-            click.isInputSlot = true;
-            click.playerInventory = playerInventory;
-            click.ui = this;
+            // ドラッグハンドラ（充填機 Input→どこへでも）
+            ItemDragHandler drag = obj.AddComponent<ItemDragHandler>();
+            drag.machineOwner = currentInputOwner;
+            drag.machineSlotIndex = capturedIndex;
+            drag.inventory = playerInventory;
+            drag.inventoryUI = inventoryUI;
+
+            // クリックハンドラ（DC：充填機 Input→インベントリ）
+            MachineSlotClickHandler click = obj.AddComponent<MachineSlotClickHandler>();
+            click.Init(currentInputOwner, capturedIndex, playerInventory, inventoryUI);
         }
 
+        // ── 出力スロット（読み取り専用：ドロップ不可、ドラッグのみ）
         for (int i = 0; i < currentMachine.slotCount; i++)
         {
             GameObject obj = Instantiate(slotPrefab, outputSlotsParent);
             outputSlotObjects.Add(obj);
+
             Inventory.Slot slot = currentMachine.outputSlots[i];
             SetSlotVisual(obj, slot);
 
-            int capturedIndex = i;
-            FillingMachineItemDragHandler drag = obj.AddComponent<FillingMachineItemDragHandler>();
-            drag.machine = currentMachine;
-            drag.slotIndex = capturedIndex;
-            drag.isInputSlot = false;
-            drag.playerInventory = playerInventory;
-            drag.ui = this;
+            // ゲージ表示（充填済みタンクのゲージを表示）
+            if (slot != null)
+            {
+                if (slot.tankInstance != null)
+                    SetGauge(obj.transform, "TankSlotGauge",
+                        slot.tankInstance.Ratio, new Color32(0, 255, 0, 255));
+                else if (slot.waterTankInstance != null)
+                    SetGauge(obj.transform, "TankSlotGauge",
+                        slot.waterTankInstance.Ratio, new Color32(0, 200, 255, 255));
+            }
 
-            FillingMachineSlotClickHandler click = obj.AddComponent<FillingMachineSlotClickHandler>();
-            click.machine = currentMachine;
-            click.slotIndex = capturedIndex;
-            click.isInputSlot = false;
-            click.playerInventory = playerInventory;
-            click.ui = this;
+            int capturedIndex = i;
+
+            // ドラッグハンドラ（充填機 Output→インベントリ/ホットバー、ドロップ不可）
+            ItemDragHandler drag = obj.AddComponent<ItemDragHandler>();
+            drag.machineOwner = currentOutputOwner;
+            drag.machineSlotIndex = capturedIndex;
+            drag.inventory = playerInventory;
+            drag.inventoryUI = inventoryUI;
+
+            // クリックハンドラ（DC：充填機 Output→インベントリ、インスタンス保持）
+            MachineSlotClickHandler click = obj.AddComponent<MachineSlotClickHandler>();
+            click.Init(currentOutputOwner, capturedIndex, playerInventory, inventoryUI);
+
+            // ※ MachineDropHandler は追加しない（IsReadOnly=true で拒否するが念のため省略）
         }
+
+        // インベントリスロットにDCハンドラを追加（DC：インベントリ→充填機 Input のみ）
+        if (IsOpen) inventoryUI?.AddMachineHandlers(currentInputOwner);
     }
 
     void SetSlotVisual(GameObject obj, Inventory.Slot slot)
     {
         Image icon = FindChild<Image>(obj, "ItemIcon");
-        TextMeshProUGUI amount = FindChild<TextMeshProUGUI>(obj, "AmountText");
+        TextMeshProUGUI amt = FindChild<TextMeshProUGUI>(obj, "AmountText");
+
         if (slot != null)
         {
             if (icon != null) { icon.sprite = slot.item.icon; icon.color = Color.white; }
-            if (amount != null) amount.text = slot.amount > 1 ? slot.amount.ToString() : "";
+            if (amt != null) amt.text = slot.amount.ToString();
         }
         else
         {
             if (icon != null) icon.color = Color.clear;
-            if (amount != null) amount.text = "";
+            if (amt != null) amt.text = "";
+        }
+    }
+
+    void SetGauge(Transform root, string gaugeName, float ratio, Color32 color)
+    {
+        Transform gaugeT = null;
+        foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+            if (child.name == gaugeName) { gaugeT = child; break; }
+        if (gaugeT == null) return;
+
+        if (ratio <= 0f) { gaugeT.gameObject.SetActive(false); return; }
+        gaugeT.gameObject.SetActive(true);
+
+        Transform fill = gaugeT.Find("Fill");
+        if (fill != null)
+        {
+            Image fillImg = fill.GetComponent<Image>();
+            if (fillImg != null)
+            {
+                fillImg.color = color;
+                fillImg.rectTransform.localScale = new Vector3(Mathf.Clamp01(ratio), 1f, 1f);
+            }
         }
     }
 
@@ -240,6 +303,37 @@ public class FillingMachineUI : MonoBehaviour
         foreach (var obj in outputSlotObjects) if (obj != null) Destroy(obj);
         inputSlotObjects.Clear();
         outputSlotObjects.Clear();
+    }
+
+    System.Collections.IEnumerator DelayedRefreshSlots()
+    {
+        yield return null;
+        if (ItemDragHandler.AnyDragging)
+            RefreshSlotsVisualOnly();
+        else
+            RefreshSlots();
+    }
+
+    void RefreshSlotsVisualOnly()
+    {
+        if (currentMachine == null) return;
+        for (int i = 0; i < currentMachine.slotCount && i < inputSlotObjects.Count; i++)
+        {
+            if (inputSlotObjects[i] != null)
+                SetSlotVisual(inputSlotObjects[i], currentMachine.inputSlots[i]);
+        }
+        for (int i = 0; i < currentMachine.slotCount && i < outputSlotObjects.Count; i++)
+        {
+            if (outputSlotObjects[i] == null) continue;
+            SetSlotVisual(outputSlotObjects[i], currentMachine.outputSlots[i]);
+            var slot = currentMachine.outputSlots[i];
+            if (slot?.tankInstance != null)
+                SetGauge(outputSlotObjects[i].transform, "TankSlotGauge",
+                    slot.tankInstance.Ratio, new Color32(0, 255, 0, 255));
+            else if (slot?.waterTankInstance != null)
+                SetGauge(outputSlotObjects[i].transform, "TankSlotGauge",
+                    slot.waterTankInstance.Ratio, new Color32(0, 200, 255, 255));
+        }
     }
 
     T FindChild<T>(GameObject root, string name) where T : Component

@@ -24,6 +24,7 @@ public class IceMelterUI : MonoBehaviour
     public TextMeshProUGUI powerConsumptionText;
 
     private IceMelter currentMachine;
+    private ISlotOwner currentOwner;
     private List<GameObject> slotObjects = new List<GameObject>();
     public bool IsOpen { get; private set; }
 
@@ -52,7 +53,6 @@ public class IceMelterUI : MonoBehaviour
 
     public void Open(IceMelter machine)
     {
-        Debug.Log($"[IceMelterUI] Open called / panel={panel != null} / machine={machine != null}");
         currentMachine = machine;
         IsOpen = true;
         panel.SetActive(true);
@@ -60,11 +60,10 @@ public class IceMelterUI : MonoBehaviour
         Cursor.visible = true;
         if (inventoryUI != null && !inventoryUI.IsOpen)
             inventoryUI.OpenInventoryExternalNoEquipment();
-        machine.OnSlotsChanged += RefreshSlots;
+        machine.OnSlotsChanged += () => StartCoroutine(DelayedRefreshSlots());
         machine.OnStatusChanged += UpdateStatus;
         UpdateStatus(machine.IsPowered ? "待機中" : "未接続");
         RefreshAll();
-        Debug.Log("[IceMelterUI] Open complete");
     }
 
     public void Close()
@@ -81,9 +80,10 @@ public class IceMelterUI : MonoBehaviour
         Cursor.visible = false;
         if (inventoryUI != null && inventoryUI.IsOpen)
             inventoryUI.CloseInventory();
-        inventoryUI?.RemoveIceMelterHandlers();
+        inventoryUI?.RemoveMachineHandlers();
         ClearSlots();
         currentMachine = null;
+        currentOwner = null;
     }
 
     void RefreshAll()
@@ -97,38 +97,60 @@ public class IceMelterUI : MonoBehaviour
     {
         ClearSlots();
         if (currentMachine == null) return;
+
+        Inventory playerInventory = inventoryUI?.inventory;
+
+        // ArraySlotOwner：氷アイテムのみ受け入れ。
+        // onChanged は同期呼び出しすると dragIcon が残るバグになるため 1 フレーム遅延する。
+        currentOwner = new ArraySlotOwner(
+            currentMachine.slots,
+            false,
+            item => currentMachine.iceItemData == null || item == currentMachine.iceItemData,
+            () => StartCoroutine(DelayedRefreshSlots())
+        );
+
         for (int i = 0; i < currentMachine.slotCount; i++)
         {
             GameObject obj = Instantiate(slotPrefab, slotsParent);
             slotObjects.Add(obj);
+
             Inventory.Slot slot = currentMachine.slots[i];
             Image icon = FindChild<Image>(obj, "ItemIcon");
-            TextMeshProUGUI amount = FindChild<TextMeshProUGUI>(obj, "AmountText");
+            TextMeshProUGUI amt = FindChild<TextMeshProUGUI>(obj, "AmountText");
+
             if (slot != null)
             {
                 if (icon != null) { icon.sprite = slot.item.icon; icon.color = Color.white; }
-                if (amount != null) amount.text = slot.amount > 1 ? slot.amount.ToString() : "";
+                if (amt != null) amt.text = slot.amount.ToString();
             }
             else
             {
                 if (icon != null) icon.color = Color.clear;
-                if (amount != null) amount.text = "";
+                if (amt != null) amt.text = "";
             }
 
             int capturedIndex = i;
-            Inventory inv = FindObjectOfType<Inventory>();
 
-            IceMelterDropHandler drop = obj.AddComponent<IceMelterDropHandler>();
-            drop.Init(currentMachine, capturedIndex, inv, this);
+            // ドロップハンドラ（インベントリ/ホットバー→解氷機）
+            MachineDropHandler drop = obj.AddComponent<MachineDropHandler>();
+            drop.Init(currentOwner, capturedIndex, playerInventory, inventoryUI);
 
-            IceMelterItemDragHandler drag = obj.AddComponent<IceMelterItemDragHandler>();
-            drag.Init(currentMachine, capturedIndex, inv, this);
+            // ドラッグハンドラ（解氷機スロット→どこへでも）
+            ItemDragHandler drag = obj.AddComponent<ItemDragHandler>();
+            drag.machineOwner = currentOwner;
+            drag.machineSlotIndex = capturedIndex;
+            drag.inventory = playerInventory;
+            drag.inventoryUI = inventoryUI;
 
-            IceMelterSlotClickHandler click = obj.AddComponent<IceMelterSlotClickHandler>();
-            click.Init(currentMachine, capturedIndex, inv, this);
+            // クリックハンドラ（DC：解氷機→インベントリ）
+            MachineSlotClickHandler click = obj.AddComponent<MachineSlotClickHandler>();
+            click.Init(currentOwner, capturedIndex, playerInventory, inventoryUI);
         }
+
         UpdateToggleButton();
-        if (IsOpen) inventoryUI?.AddIceMelterHandlers(currentMachine, this);
+
+        // インベントリスロットにDCハンドラを追加（DC：インベントリ→解氷機）
+        if (IsOpen) inventoryUI?.AddMachineHandlers(currentOwner);
     }
 
     void UpdateToggleButton()
@@ -173,6 +195,12 @@ public class IceMelterUI : MonoBehaviour
         slotObjects.Clear();
     }
 
+    IEnumerator DelayedRefreshSlots()
+    {
+        yield return null;
+        RefreshSlots();
+    }
+
     public void RequestInventoryRefresh()
     {
         StartCoroutine(DoInventoryRefresh());
@@ -182,7 +210,8 @@ public class IceMelterUI : MonoBehaviour
     {
         yield return null;
         inventoryUI?.RefreshAll();
-        if (IsOpen) inventoryUI?.AddIceMelterHandlers(currentMachine, this);
+        if (IsOpen && currentOwner != null)
+            inventoryUI?.AddMachineHandlers(currentOwner);
     }
 
     T FindChild<T>(GameObject root, string name) where T : Component

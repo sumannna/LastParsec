@@ -27,12 +27,12 @@ public class Electrolyzer : MonoBehaviour, IPowerConsumer
     public string ConsumerName => "Electrolyzer";
     public float PowerConsumption => powerConsumption;
     public bool IsRunning => isOn && isPowered;
-
+    public bool IsOn => isOn;
+    public bool IsConsuming => isOn && isPowered && CanProcess();
     private bool isOn = false;
     private bool isPowered = false;
     private Coroutine processCoroutine;
 
-    public bool IsOn => isOn;
     public ElectricConnector Connector => electricConnector;
 
     public event System.Action OnSlotsChanged;
