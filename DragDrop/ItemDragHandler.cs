@@ -16,14 +16,22 @@ public class ItemDragHandler : MonoBehaviour,
     [Header("どちらからドラッグされたか")]
     public Inventory.Slot inventorySlot;
     public EquipmentSlotData equipmentSlotData;
-    public Hotbar.Slot hotbarSlot;   // ホットバーからのドラッグ用
-    public int hotbarIndex = -1;     // ホットバースロットのインデックス
+    public Hotbar.Slot hotbarSlot;
+    public int hotbarIndex = -1;
     public Hotbar hotbar;
     public HotbarUI hotbarUI;
+
+    // -----------------------------------------------
+    // 機械スロット用フィールド（IceMelter/FillingMachine/Chest等）
+    // -----------------------------------------------
+    [HideInInspector] public ISlotOwner machineOwner;
+    [HideInInspector] public int machineSlotIndex = -1;
 
     // OnDrop → OnEndDrag の順で呼ばれるため、OnDrop時点でhotbarSlotがnullになる。
     // ホットバードラッグだったかをフラグで記録する。
     private bool wasHotbarDrag = false;
+    // 機械スロットドラッグだったかをフラグで記録する。
+    private bool wasMachineDrag = false;
 
     /// <summary>このドラッグで運ぶ個数。</summary>
     [HideInInspector] public int dragAmount;
@@ -141,21 +149,42 @@ public class ItemDragHandler : MonoBehaviour,
     }
 
     // -----------------------------------------------
+    // ソース判定ヘルパー
+    // -----------------------------------------------
+
+    bool IsInventoryDrag() => inventorySlot != null;
+    bool IsHotbarDrag() => hotbarSlot != null;
+
+    /// <summary>機械・チェストスロットからのドラッグか。</summary>
+    public bool IsMachineDrag() => machineOwner != null && machineSlotIndex >= 0;
+
+    // -----------------------------------------------
     // 右クリック・ホイールクリック共通ドラッグ
     // -----------------------------------------------
 
     /// <param name="dragDivisor">0=1個固定、2=半分、3=1/3</param>
     void BeginSpecialDrag(int dragDivisor)
     {
-        if (inventorySlot == null || inventorySlot.item == null) return;
-        if (inventorySlot.amount <= 0) return;
-        if (IsGaugeSlot(inventorySlot)) return;
+        // ── ソースアイテム取得 ──
+        ItemData item = null;
+        int amount = 0;
 
-        int amount = inventorySlot.amount;
-        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        dragAmount = dragDivisor == 0
-            ? (shift ? 2 : 1)
-            : Mathf.Max(1, amount / dragDivisor);
+        if (IsMachineDrag())
+        {
+            if (machineOwner.IsReadOnly) return; // Outputスロットは分割移動禁止
+            var mSlot = machineOwner.GetSlot(machineSlotIndex);
+            if (mSlot == null || mSlot.item == null || mSlot.amount <= 0) return;
+            item = mSlot.item;
+            amount = mSlot.amount;
+        }
+        else if (inventorySlot != null)
+        {
+            if (inventorySlot.item == null || inventorySlot.amount <= 0) return;
+            if (IsGaugeSlot(inventorySlot)) return;
+            item = inventorySlot.item;
+            amount = inventorySlot.amount;
+        }
+        else return;
 
         canvas = GetComponentInParent<Canvas>();
         if (canvas == null) return;
@@ -164,13 +193,18 @@ public class ItemDragHandler : MonoBehaviour,
         CacheSourceReferences();
         if (sourceIcon == null) return;
 
+        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        dragAmount = dragDivisor == 0
+            ? (shift ? 2 : 1)
+            : Mathf.Max(1, amount / dragDivisor);
+
         AnyDragging = true;
         activeDragHandler = this;
+        wasMachineDrag = IsMachineDrag();
 
         if (dragDivisor == 0) isRightClickDragging = true;
         else isMiddleClickDragging = true;
 
-        ItemData item = inventorySlot.item;
         RectTransform sourceRt = sourceIcon.GetComponent<RectTransform>();
 
         dragIcon = new GameObject("DragIcon");
@@ -218,7 +252,7 @@ public class ItemDragHandler : MonoBehaviour,
 
         if (dragIcon != null) { Destroy(dragIcon); dragIcon = null; }
 
-        // カーソル下のDropHandlerへ
+        // カーソル下のDropHandlerへ（MachineDropHandler / HotbarDropHandler / DropHandler の順で検索）
         var pointerData = new PointerEventData(EventSystem.current);
         pointerData.position = Input.mousePosition;
         var results = new List<RaycastResult>();
@@ -226,15 +260,24 @@ public class ItemDragHandler : MonoBehaviour,
 
         foreach (var result in results)
         {
+            MachineDropHandler mDh = result.gameObject.GetComponent<MachineDropHandler>();
+            if (mDh != null) { mDh.ReceiveDrop(this); break; }
+
+            HotbarDropHandler hDh = result.gameObject.GetComponent<HotbarDropHandler>();
+            if (hDh != null) { hDh.ReceiveDrop(this); break; }
+
             DropHandler dh = result.gameObject.GetComponent<DropHandler>();
-            if (dh != null)
-            {
-                dh.ReceiveDrop(this);
-                break;
-            }
+            if (dh != null) { dh.ReceiveDrop(this); break; }
         }
 
-        if (inventorySlot != null)
+        // ── ドロップ後の後処理 ──
+        if (wasMachineDrag)
+        {
+            wasMachineDrag = false;
+            if (machineOwner != null)
+                ShowSourceVisuals();
+        }
+        else if (inventorySlot != null)
         {
             if (!IsPointerOverInventoryOrEquipment(results))
                 DropToWorld();
@@ -264,9 +307,6 @@ public class ItemDragHandler : MonoBehaviour,
         }
     }
 
-    bool IsInventoryDrag() => inventorySlot != null;
-    bool IsHotbarDrag() => hotbarSlot != null;
-
     public static bool IsGaugeSlot(Inventory.Slot slot)
     {
         return slot?.item is OxygenTankData
@@ -276,6 +316,7 @@ public class ItemDragHandler : MonoBehaviour,
 
     ItemData GetDraggedItem()
     {
+        if (IsMachineDrag()) return machineOwner.GetSlot(machineSlotIndex)?.item;
         if (IsInventoryDrag()) return inventorySlot.item;
         if (IsHotbarDrag()) return hotbarSlot.item;
         if (equipmentSystem != null && equipmentSlotData != null)
@@ -286,47 +327,45 @@ public class ItemDragHandler : MonoBehaviour,
     float GetGaugeRatio(ItemData item)
     {
         if (item == null) return -1f;
+
+        if (IsMachineDrag())
+        {
+            var mSlot = machineOwner.GetSlot(machineSlotIndex);
+            if (mSlot == null) return -1f;
+            if (item is OxygenTankData && mSlot.tankInstance != null) return mSlot.tankInstance.Ratio;
+            if (item is ThrusterTankData && mSlot.thrusterInstance != null) return mSlot.thrusterInstance.Ratio;
+            if (item is WaterTankData && mSlot.waterTankInstance != null) return mSlot.waterTankInstance.Ratio;
+            if (item is ToolData && mSlot.toolInstance != null) return mSlot.toolInstance.Ratio;
+            return -1f;
+        }
+
         if (IsInventoryDrag())
         {
-            if (item is OxygenTankData && inventorySlot.tankInstance != null)
-                return inventorySlot.tankInstance.Ratio;
-            if (item is ThrusterTankData && inventorySlot.thrusterInstance != null)
-                return inventorySlot.thrusterInstance.Ratio;
-            if (item is SpacesuitData && inventorySlot.spacesuitInstance != null)
-                return inventorySlot.spacesuitInstance.Ratio;
-            if (item is ToolData && inventorySlot.toolInstance != null)
-                return inventorySlot.toolInstance.Ratio;
+            if (item is OxygenTankData && inventorySlot.tankInstance != null) return inventorySlot.tankInstance.Ratio;
+            if (item is ThrusterTankData && inventorySlot.thrusterInstance != null) return inventorySlot.thrusterInstance.Ratio;
+            if (item is SpacesuitData && inventorySlot.spacesuitInstance != null) return inventorySlot.spacesuitInstance.Ratio;
+            if (item is ToolData && inventorySlot.toolInstance != null) return inventorySlot.toolInstance.Ratio;
         }
         else if (IsHotbarDrag())
         {
             if (item is ToolData && hotbarSlot.toolInstance != null)
                 return hotbarSlot.toolInstance.Ratio;
         }
-        else
+        else if (equipmentSystem != null)
         {
-            if (item is OxygenTankData)
-            {
-                var tank = equipmentSystem.GetTankInstance(equipmentSlotData);
-                if (tank != null) return tank.Ratio;
-            }
-            if (item is ThrusterTankData)
-            {
-                var thruster = equipmentSystem.GetThrusterInstance(equipmentSlotData);
-                if (thruster != null) return thruster.Ratio;
-            }
-            if (item is SpacesuitData)
-            {
-                var suit = equipmentSystem.GetSpacesuitInstance(equipmentSlotData);
-                if (suit != null) return suit.Ratio;
-            }
+            if (item is OxygenTankData) { var t = equipmentSystem.GetTankInstance(equipmentSlotData); if (t != null) return t.Ratio; }
+            if (item is ThrusterTankData) { var t = equipmentSystem.GetThrusterInstance(equipmentSlotData); if (t != null) return t.Ratio; }
+            if (item is SpacesuitData) { var s = equipmentSystem.GetSpacesuitInstance(equipmentSlotData); if (s != null) return s.Ratio; }
         }
         return -1f;
     }
 
-    string GetGaugeObjectName() => (IsInventoryDrag() || IsHotbarDrag()) ? "TankSlotGauge" : "TankGauge";
+    string GetGaugeObjectName() =>
+        (IsInventoryDrag() || IsHotbarDrag() || IsMachineDrag()) ? "TankSlotGauge" : "TankGauge";
 
     int GetDraggedAmount()
     {
+        if (IsMachineDrag()) return machineOwner.GetSlot(machineSlotIndex)?.amount ?? 0;
         if (IsInventoryDrag()) return inventorySlot.amount;
         if (IsHotbarDrag()) return hotbarSlot.amount;
         return 1;
@@ -338,9 +377,26 @@ public class ItemDragHandler : MonoBehaviour,
 
     public void HideSourceVisuals()
     {
+        // 部分移動（右クリックDD=1個、Shiftドラッグ=半分）の場合は
+        // 移動元スロットにアイコン・ゲージを残し、残数だけ更新する。
+        int totalAmount = GetDraggedAmount();
+        bool isPartialDrag = dragAmount > 0 && dragAmount < totalAmount;
+
+        if (isPartialDrag)
+        {
+            // アイコンとゲージはそのまま表示、AmountTextだけ残数に書き換える
+            if (sourceAmountText != null)
+            {
+                sourceAmountText.gameObject.SetActive(true);
+                sourceAmountText.text = (totalAmount - dragAmount).ToString();
+            }
+            return;
+        }
+
+        // 全量移動の場合は従来通り非表示
         if (sourceIcon != null) sourceIcon.gameObject.SetActive(false);
         if (sourceGaugeObject != null) sourceGaugeObject.SetActive(false);
-        if (IsInventoryDrag() && sourceAmountText != null)
+        if ((IsInventoryDrag() || IsMachineDrag()) && sourceAmountText != null)
             sourceAmountText.gameObject.SetActive(false);
     }
 
@@ -349,18 +405,16 @@ public class ItemDragHandler : MonoBehaviour,
         Debug.Log($"[ItemDragHandler] ShowSourceVisuals: sourceIcon={sourceIcon?.gameObject.name ?? "null"}, active前={sourceIcon?.gameObject.activeSelf}");
         if (wasHotbarDrag) return;
         if (sourceIcon != null) sourceIcon.gameObject.SetActive(true);
-        // 以降は既存コードそのまま
 
-        // ゲージはゲージ付きアイテムのみ表示（非ゲージアイテムにゲージが出るバグを防ぐ）
         if (sourceGaugeObject != null)
         {
             bool shouldShowGauge = IsInventoryDrag()
                 ? IsGaugeSlot(inventorySlot)
-                : (equipmentSlotData != null); // 装備スロットは常にゲージあり
+                : (equipmentSlotData != null);
             sourceGaugeObject.SetActive(shouldShowGauge);
         }
 
-        if (IsInventoryDrag() && sourceAmountText != null)
+        if ((IsInventoryDrag() || IsMachineDrag()) && sourceAmountText != null)
             sourceAmountText.gameObject.SetActive(true);
     }
 
@@ -420,8 +474,8 @@ public class ItemDragHandler : MonoBehaviour,
 
         ItemData item = GetDraggedItem();
         Color32 fillColor = item is ToolData
-            ? new Color32(255, 165, 0, 255)  // オレンジ（耐久）
-            : new Color32(0, 255, 0, 255);   // 緑（タンク系）
+            ? new Color32(255, 165, 0, 255)   // オレンジ（耐久）
+            : new Color32(0, 255, 0, 255);    // 緑（タンク系）
 
         GameObject gaugeBg = new GameObject(GetGaugeObjectName());
         gaugeBg.transform.SetParent(dragIcon.transform, false);
@@ -455,7 +509,6 @@ public class ItemDragHandler : MonoBehaviour,
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        // 左クリック以外（ホイール・右クリック）はUpdate側で処理するため無視
         if (eventData.button != PointerEventData.InputButton.Left) return;
         if (isRightClickDragging || isMiddleClickDragging) return;
 
@@ -475,10 +528,20 @@ public class ItemDragHandler : MonoBehaviour,
         {
             dragAmount = GetDraggedAmount();
 
-            // Shift+左クリックドラッグ：ゲージなし素材のみ半分
-            if (IsInventoryDrag() && inventorySlot != null && !IsGaugeSlot(inventorySlot))
+            bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+            if (IsMachineDrag() && !machineOwner.IsReadOnly)
             {
-                bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                if (shift)
+                {
+                    var mSlot = machineOwner.GetSlot(machineSlotIndex);
+                    bool isGauge = mSlot?.item is OxygenTankData || mSlot?.item is ThrusterTankData;
+                    if (!isGauge && mSlot != null)
+                        dragAmount = Mathf.Max(1, mSlot.amount / 2);
+                }
+            }
+            else if (IsInventoryDrag() && inventorySlot != null && !IsGaugeSlot(inventorySlot))
+            {
                 if (shift)
                     dragAmount = Mathf.Max(1, inventorySlot.amount / 2);
             }
@@ -486,7 +549,8 @@ public class ItemDragHandler : MonoBehaviour,
 
         AnyDragging = true;
         activeDragHandler = this;
-        wasHotbarDrag = IsHotbarDrag(); // ドラッグ開始時に記録
+        wasHotbarDrag = IsHotbarDrag();
+        wasMachineDrag = IsMachineDrag();
 
         dragIcon = new GameObject("DragIcon");
         dragIcon.transform.SetParent(canvas.transform, false);
@@ -529,6 +593,18 @@ public class ItemDragHandler : MonoBehaviour,
         if (dragIcon != null) { Destroy(dragIcon); dragIcon = null; }
         else Debug.LogWarning("[ItemDragHandler] OnEndDrag: dragIcon は既にnull");
 
+        if (wasMachineDrag)
+        {
+            wasMachineDrag = false;
+            if (machineOwner != null)
+            {
+                // ドロップ拒否 → ビジュアル復元。machineOwner/machineSlotIndexは保持する
+                ShowSourceVisuals();
+            }
+            return;
+        }
+
+        // ── インベントリ・装備・ホットバードラッグの後処理（既存） ──
         Debug.Log($"[ItemDragHandler] OnEndDrag: inventorySlot={inventorySlot?.item?.itemName ?? "null"}, wasHotbarDrag={wasHotbarDrag}");
 
         bool willShowSource = (inventorySlot != null || equipmentSlotData != null) && !wasHotbarDrag;
@@ -599,6 +675,8 @@ public class ItemDragHandler : MonoBehaviour,
             if (result.gameObject.GetComponent<DropHandler>() != null) return true;
             if (result.gameObject.GetComponent<EquipmentDropHandler>() != null) return true;
             if (result.gameObject.GetComponent<ResearchBlueprintHandler>() != null) return true;
+            // 機械・チェストパネル上もワールドドロップ不可
+            if (result.gameObject.GetComponent<MachineDropHandler>() != null) return true;
         }
         return false;
     }
@@ -639,5 +717,8 @@ public class ItemDragHandler : MonoBehaviour,
         ShowSourceVisuals();
         AnyDragging = false;
         activeDragHandler = null;
+        machineOwner = null;
+        machineSlotIndex = -1;
+        wasMachineDrag = false;
     }
 }

@@ -3,8 +3,8 @@ using UnityEngine.EventSystems;
 
 /// <summary>
 /// ホットバースロットへのD&Dを受け取るハンドラ。
-/// インベントリ→ホットバー、ホットバー→ホットバーのスワップに対応。
-/// ToolInstanceも正しく引き継ぐ。
+/// インベントリ→ホットバー、ホットバー→ホットバー、機械→ホットバーに対応。
+/// ReceiveDrop() で右クリックドラッグからも呼べる。
 /// </summary>
 public class HotbarDropHandler : MonoBehaviour, IDropHandler
 {
@@ -19,20 +19,56 @@ public class HotbarDropHandler : MonoBehaviour, IDropHandler
         if (eventData == null) return;
         ItemDragHandler dragHandler = eventData.pointerDrag?.GetComponent<ItemDragHandler>();
         if (dragHandler == null) return;
+        ReceiveDrop(dragHandler);
+    }
 
-        // インベントリ → ホットバー
-        if (dragHandler.inventorySlot != null)
+    /// <summary>右クリックドラッグ終了時など、外部から直接呼ぶエントリポイント。</summary>
+    public void ReceiveDrop(ItemDragHandler drag)
+    {
+        if (drag == null) return;
+
+        if (drag.IsMachineDrag()) { HandleMachineToHotbar(drag); return; }
+        if (drag.inventorySlot != null) { HandleInventoryToHotbar(drag); return; }
+        if (drag.hotbarSlot != null) { HandleHotbarToHotbar(drag); return; }
+    }
+
+    // -----------------------------------------------
+    // 機械 → ホットバー
+    // -----------------------------------------------
+
+    void HandleMachineToHotbar(ItemDragHandler drag)
+    {
+        var srcSlot = drag.machineOwner.GetSlot(drag.machineSlotIndex);
+        if (srcSlot == null || srcSlot.item == null) return;
+        if (IsMaterial(srcSlot.item)) return;
+
+        int amount = Mathf.Min(drag.dragAmount > 0 ? drag.dragAmount : srcSlot.amount, srcSlot.amount);
+        Hotbar.Slot target = hotbar.GetSlot(hotbarIndex);
+
+        // ホットバーに既存アイテムがあればインベントリへ返す
+        if (target.item != null)
         {
-            HandleInventoryToHotbar(dragHandler);
-            return;
+            if (target.toolInstance != null)
+                inventory.AddItemAmount(target.item, target.amount); // ToolInstance保持は省略（簡略化）
+            else
+                inventory.AddItemAmount(target.item, target.amount);
         }
 
-        // ホットバー → ホットバー（スワップ）
-        if (dragHandler.hotbarSlot != null)
-        {
-            HandleHotbarToHotbar(dragHandler);
-            return;
-        }
+        target.item = srcSlot.item;
+        target.amount = amount;
+        target.toolInstance = srcSlot.toolInstance;
+
+        // 機械スロットを減らす
+        srcSlot.amount -= amount;
+        if (srcSlot.amount <= 0)
+            drag.machineOwner.SetSlot(drag.machineSlotIndex, null);
+
+        drag.machineOwner.NotifyChanged();
+        drag.machineOwner = null;
+        drag.machineSlotIndex = -1;
+
+        inventoryUI?.RefreshAll();
+        hotbarUI?.RefreshAll();
     }
 
     // -----------------------------------------------
@@ -44,7 +80,6 @@ public class HotbarDropHandler : MonoBehaviour, IDropHandler
         Inventory.Slot sourceSlot = dragHandler.inventorySlot;
         if (sourceSlot == null || sourceSlot.item == null) return;
 
-        // マテリアル系はホットバー不可
         if (IsMaterial(sourceSlot.item))
         {
             Debug.Log("マテリアル系アイテムはホットバーに配置できない");
@@ -53,20 +88,13 @@ public class HotbarDropHandler : MonoBehaviour, IDropHandler
 
         Hotbar.Slot target = hotbar.GetSlot(hotbarIndex);
 
-        // ホットバーに既存アイテムがあればインベントリに返す（ToolInstanceも含む）
         if (target.item != null)
         {
             if (target.toolInstance != null)
             {
-                // ToolInstanceを保持したままインベントリへ戻す
-                var slot = new Inventory.Slot(target.item, target.amount);
-                slot.toolInstance = target.toolInstance;
-                // Inventoryの内部配列に直接追加するためAddItemAmountは使えない
-                // AddItemを使いToolInstanceは後から設定
                 bool added = inventory.AddItemAtIndex(target.item, GetFirstEmptyInventoryIndex());
                 if (added)
                 {
-                    // 追加されたスロットを探してToolInstanceをセット
                     foreach (var s in inventory.GetSlots())
                     {
                         if (s != null && s.item == target.item && s.toolInstance == null)
@@ -83,20 +111,24 @@ public class HotbarDropHandler : MonoBehaviour, IDropHandler
             }
         }
 
-        // インベントリ → ホットバーへ移動（ToolInstanceも引き継ぐ）
         target.item = sourceSlot.item;
         target.amount = sourceSlot.amount;
         target.toolInstance = sourceSlot.toolInstance;
+        target.tankInstance = sourceSlot.tankInstance;
+        target.thrusterInstance = sourceSlot.thrusterInstance;
+        target.waterTankInstance = sourceSlot.waterTankInstance;
 
         inventory.RemoveSlot(sourceSlot);
         dragHandler.inventorySlot = null;
 
-        // DragIconの残存を防ぐ
         ItemDragHandler.CancelDrag();
 
         inventoryUI.RefreshAll();
         hotbarUI.RefreshAll();
     }
+
+    // -----------------------------------------------
+    // ホットバー → ホットバー（スワップ）
     // -----------------------------------------------
 
     void HandleHotbarToHotbar(ItemDragHandler dragHandler)
@@ -108,18 +140,26 @@ public class HotbarDropHandler : MonoBehaviour, IDropHandler
         Hotbar.Slot src = hotbar.GetSlot(srcIndex);
         Hotbar.Slot dst = hotbar.GetSlot(hotbarIndex);
 
-        // スワップ（ToolInstanceごと）
         ItemData tmpItem = dst.item;
         int tmpAmount = dst.amount;
         ToolInstance tmpTool = dst.toolInstance;
+        OxygenTankInstance tmpTank = dst.tankInstance;
+        ThrusterTankInstance tmpThruster = dst.thrusterInstance;
+        WaterTankInstance tmpWater = dst.waterTankInstance;
 
         dst.item = src.item;
         dst.amount = src.amount;
         dst.toolInstance = src.toolInstance;
+        dst.tankInstance = src.tankInstance;
+        dst.thrusterInstance = src.thrusterInstance;
+        dst.waterTankInstance = src.waterTankInstance;
 
         src.item = tmpItem;
         src.amount = tmpAmount;
         src.toolInstance = tmpTool;
+        src.tankInstance = tmpTank;
+        src.thrusterInstance = tmpThruster;
+        src.waterTankInstance = tmpWater;
 
         dragHandler.hotbarSlot = null;
 

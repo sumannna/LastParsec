@@ -12,7 +12,10 @@ public class Hotbar : MonoBehaviour
     {
         public ItemData item;
         public int amount;
-        public ToolInstance toolInstance; // ← 追加：道具の耐久インスタンス
+        public ToolInstance toolInstance;
+        public OxygenTankInstance tankInstance;
+        public ThrusterTankInstance thrusterInstance;
+        public WaterTankInstance waterTankInstance;
     }
 
     private Slot[] slots = new Slot[SlotCount];
@@ -80,7 +83,10 @@ public class Hotbar : MonoBehaviour
         if (index < 0 || index >= SlotCount) return;
         slots[index].item = null;
         slots[index].amount = 0;
-        slots[index].toolInstance = null; // ← 追加
+        slots[index].toolInstance = null;
+        slots[index].tankInstance = null;
+        slots[index].thrusterInstance = null;
+        slots[index].waterTankInstance = null;
     }
 
     /// <summary>

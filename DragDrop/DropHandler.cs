@@ -25,6 +25,12 @@ public class DropHandler : MonoBehaviour, IDropHandler
     {
         if (dragHandler == null) return;
 
+        if (dragHandler.IsMachineDrag())
+        {
+            HandleMachineDrop(dragHandler);
+            return;
+        }
+
         if (dragHandler.inventorySlot != null)
         {
             HandleInventoryDrop(dragHandler);
@@ -45,6 +51,60 @@ public class DropHandler : MonoBehaviour, IDropHandler
     }
 
     // -----------------------------------------------
+    // 機械スロット → インベントリ
+    // -----------------------------------------------
+
+    void HandleMachineDrop(ItemDragHandler drag)
+    {
+        ISlotOwner owner = drag.machineOwner;
+        int srcIdx = drag.machineSlotIndex;
+        Inventory.Slot src = owner.GetSlot(srcIdx);
+        if (src == null || src.item == null) return;
+
+        bool isInstance = src.tankInstance != null || src.waterTankInstance != null
+                       || src.thrusterInstance != null || src.spacesuitInstance != null;
+
+        // インスタンス付きアイテムは全量強制移動
+        int amount = isInstance
+            ? src.amount
+            : Mathf.Clamp(drag.dragAmount > 0 ? drag.dragAmount : src.amount, 1, src.amount);
+
+        if (targetSlot == null)
+        {
+            // 空きスロットへ配置（インスタンス保持）
+            var invSlots = inventory.GetSlots();
+            if (targetIndex < 0 || targetIndex >= invSlots.Length || invSlots[targetIndex] != null) return;
+
+            var newSlot = new Inventory.Slot(src.item, amount);
+            if (src.tankInstance != null) newSlot.tankInstance = src.tankInstance;
+            if (src.thrusterInstance != null) newSlot.thrusterInstance = src.thrusterInstance;
+            if (src.waterTankInstance != null) newSlot.waterTankInstance = src.waterTankInstance;
+            if (src.spacesuitInstance != null) newSlot.spacesuitInstance = src.spacesuitInstance;
+            if (src.toolInstance != null) newSlot.toolInstance = src.toolInstance;
+            invSlots[targetIndex] = newSlot;
+        }
+        else
+        {
+            // 埋まったスロット：同種マージのみ（インスタンスなし限定）
+            if (isInstance || targetSlot.item != src.item) return;
+            int space = targetSlot.item.maxStack - targetSlot.amount;
+            int toAdd = Mathf.Min(amount, space);
+            if (toAdd <= 0) return;
+            targetSlot.amount += toAdd;
+            amount = toAdd;
+        }
+
+        // 機械スロットを減らす
+        src.amount -= amount;
+        if (src.amount <= 0) owner.SetSlot(srcIdx, null);
+
+        drag.machineOwner = null;
+        drag.machineSlotIndex = -1;
+        owner.NotifyChanged();
+        StartCoroutine(RefreshNextFrame());
+    }
+
+    // -----------------------------------------------
     // インベントリ → インベントリ
     // -----------------------------------------------
 
@@ -58,16 +118,10 @@ public class DropHandler : MonoBehaviour, IDropHandler
 
         if (targetSlot == null)
         {
-            // ── 空きスロットへ ──
             if (dragAmt >= sourceSlot.amount)
-            {
                 inventory.MoveSlotToIndex(sourceSlot, targetIndex);
-            }
             else
-            {
-                // 部分ドラッグ：分割して配置
                 inventory.SplitSlotToIndex(sourceSlot, dragAmt, targetIndex);
-            }
         }
         else
         {
@@ -81,18 +135,13 @@ public class DropHandler : MonoBehaviour, IDropHandler
             bool canMerge = isSameItem && !isGauge && !IsGaugeSlot(targetSlot);
 
             if (canMerge)
-            {
-                // ── 同種アイテムをマージ ──
                 inventory.MergeIntoSlot(sourceSlot, dragAmt, targetSlot);
-                // overflowはsourceSlotに残るため追加処理不要
-            }
             else
             {
-                // ── スワップ（全量のみ） ──
                 if (dragAmt >= sourceSlot.amount)
                     inventory.SwapSlots(sourceSlot, targetSlot);
                 else
-                    return; // 部分ドラッグで異種にはドロップ不可
+                    return;
             }
         }
 
@@ -166,13 +215,11 @@ public class DropHandler : MonoBehaviour, IDropHandler
             OxygenTankInstance equippedOxyInst = dragHandler.equipmentSystem.GetTankInstance(oxySlot);
 
             inventory.ReserveIndex(targetIndex);
-
             if (equippedOxy != null)
             {
                 dragHandler.equipmentSystem.Unequip(oxySlot);
                 inventory.AddItemWithTank(equippedOxy, equippedOxyInst);
             }
-
             inventory.UnreserveIndex(targetIndex);
 
             var (oldItem, _, _, oldSuit) =
@@ -207,15 +254,15 @@ public class DropHandler : MonoBehaviour, IDropHandler
 
         if (targetSlot == null)
         {
-            // 空きスロットへ移動
             bool added = inventory.AddItemAtIndex(item, targetIndex);
             if (added)
             {
-                // ToolInstanceをセット
-                if (srcHotbar.toolInstance != null)
+                var newSlot = inventory.GetSlots()[targetIndex];
+                if (newSlot != null)
                 {
-                    var newSlot = inventory.GetSlots()[targetIndex];
-                    if (newSlot != null) newSlot.toolInstance = srcHotbar.toolInstance;
+                    newSlot.amount = srcHotbar.amount; // amountを引き継ぐ
+                    if (srcHotbar.toolInstance != null)
+                        newSlot.toolInstance = srcHotbar.toolInstance;
                 }
                 dragHandler.hotbar.ClearSlot(dragHandler.hotbarIndex);
                 dragHandler.hotbarSlot = null;
@@ -223,31 +270,37 @@ public class DropHandler : MonoBehaviour, IDropHandler
         }
         else
         {
-            // 埋まっているスロットとスワップ
             ItemData invItem = targetSlot.item;
             int invAmount = targetSlot.amount;
             ToolInstance invTool = targetSlot.toolInstance;
+            OxygenTankInstance invTank = targetSlot.tankInstance;
+            ThrusterTankInstance invThruster = targetSlot.thrusterInstance;
+            SpacesuitInstance invSuit = targetSlot.spacesuitInstance;
 
             targetSlot.item = item;
             targetSlot.amount = srcHotbar.amount;
             targetSlot.toolInstance = srcHotbar.toolInstance;
-            targetSlot.tankInstance = null;
-            targetSlot.thrusterInstance = null;
+            targetSlot.tankInstance = srcHotbar.tankInstance;
+            targetSlot.thrusterInstance = srcHotbar.thrusterInstance;
             targetSlot.spacesuitInstance = null;
+            targetSlot.waterTankInstance = srcHotbar.waterTankInstance;
 
             srcHotbar.item = invItem;
             srcHotbar.amount = invAmount;
             srcHotbar.toolInstance = invTool;
+            srcHotbar.tankInstance = invTank;
+            srcHotbar.thrusterInstance = invThruster;
+            srcHotbar.waterTankInstance = null;
 
             dragHandler.hotbarSlot = null;
         }
 
-        // DragIconの残存を防ぐ
         ItemDragHandler.CancelDrag();
 
         StartCoroutine(RefreshHotbarNextFrame(dragHandler.hotbarUI));
         StartCoroutine(RefreshNextFrame());
     }
+
     // -----------------------------------------------
     // ユーティリティ
     // -----------------------------------------------
