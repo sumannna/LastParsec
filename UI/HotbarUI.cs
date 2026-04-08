@@ -123,6 +123,14 @@ public class HotbarUI : MonoBehaviour
             dragHandler.inventory = inventory;
             dragHandler.inventoryUI = inventoryUI;
 
+            // クリックハンドラ（DC：ホットバー→インベントリ）
+            HotbarSlotClickHandler clickHandler = slotObj.AddComponent<HotbarSlotClickHandler>();
+            clickHandler.hotbar = hotbar;
+            clickHandler.hotbarIndex = i;
+            clickHandler.inventory = inventory;
+            clickHandler.inventoryUI = inventoryUI;
+            clickHandler.hotbarUI = this;
+
             int index = i;
             slotObj.name = $"HotbarSlot_{index}";
         }
@@ -155,17 +163,17 @@ public class HotbarUI : MonoBehaviour
 
             TextMeshProUGUI amount = FindChild<TextMeshProUGUI>(slotObj, "AmountText");
             if (amount != null)
-                amount.text = (slot.item != null && slot.amount > 1) ? slot.amount.ToString() : "";
+                amount.text = slot.item != null ? slot.amount.ToString() : "";
 
             // 耐久ゲージ（ToolInstance）
             if (slot.item is ToolData && slot.toolInstance != null)
                 SetGauge(slotObj, "TankSlotGauge", slot.toolInstance.Ratio, new Color32(255, 165, 0, 255));
-            else if (slot.item is WaterTankData)
-            {
-                Inventory.Slot invSlot = FindWaterTankSlot(slot.item as WaterTankData);
-                if (invSlot?.waterTankInstance != null)
-                    SetGauge(slotObj, "TankSlotGauge", invSlot.waterTankInstance.Ratio, new Color32(0, 150, 255, 255));
-            }
+            else if (slot.item is OxygenTankData && slot.tankInstance != null)
+                SetGauge(slotObj, "TankSlotGauge", slot.tankInstance.Ratio, new Color32(0, 255, 0, 255));
+            else if (slot.item is ThrusterTankData && slot.thrusterInstance != null)
+                SetGauge(slotObj, "TankSlotGauge", slot.thrusterInstance.Ratio, new Color32(0, 255, 0, 255));
+            else if (slot.item is WaterTankData && slot.waterTankInstance != null)
+                SetGauge(slotObj, "TankSlotGauge", slot.waterTankInstance.Ratio, new Color32(0, 150, 255, 255));
             else
             {
                 Transform gauge = FindChildTransform(slotObj, "TankSlotGauge");

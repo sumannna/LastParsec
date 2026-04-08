@@ -27,7 +27,7 @@ public class PlacementSystem : MonoBehaviour
     {
         bool isDead = (vitalSystem != null && vitalSystem.IsDead)
                    || (oxygenSystem != null && oxygenSystem.IsGameOver);
-        bool uiOpen = inventoryUI != null && inventoryUI.IsOpen;
+        bool uiOpen = UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen();
         if (isDead || uiOpen)
         {
             CancelPlacement();

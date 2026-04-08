@@ -5,7 +5,6 @@ using TMPro;
 
 /// <summary>
 /// チェストUIの管理。
-/// インベントリUIの左側に表示。装備欄は非表示。
 /// </summary>
 public class ChestUI : MonoBehaviour
 {
@@ -29,6 +28,9 @@ public class ChestUI : MonoBehaviour
     public bool IsOpen => isOpen;
     private bool closedThisFrame = false;
     private bool openedThisFrame = false;
+
+    // 現在のチェストスロットオーナー（InventoryUI のMachineHandlers用）
+    private ISlotOwner currentChestOwner;
 
     void Awake()
     {
@@ -73,10 +75,7 @@ public class ChestUI : MonoBehaviour
 
         // インベントリを開く（装備欄は非表示）
         if (inventoryUI != null && !inventoryUI.IsOpen)
-            inventoryUI.OpenInventoryExternal();
-
-        if (equipmentUI != null)
-            equipmentUI.equipmentPanel.SetActive(false);
+            inventoryUI.OpenInventoryExternalNoEquipment();
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
@@ -90,6 +89,10 @@ public class ChestUI : MonoBehaviour
         Debug.Log("[ChestUI] Close開始");
         isOpen = false;
 
+        // インベントリのDCハンドラを削除
+        inventoryUI?.RemoveMachineHandlers();
+        currentChestOwner = null;
+
         var chest = currentChest;
         currentChest = null;
         chest?.CloseChest();
@@ -100,10 +103,6 @@ public class ChestUI : MonoBehaviour
         {
             Debug.Log("[ChestUI] inventoryUI.CloseInventory呼び出し");
             inventoryUI.CloseInventory();
-        }
-        else
-        {
-            Debug.Log($"[ChestUI] inventoryUI.CloseInventoryスキップ inventoryUI={inventoryUI != null} IsOpen={inventoryUI?.IsOpen}");
         }
 
         Cursor.lockState = CursorLockMode.Locked;
@@ -121,6 +120,16 @@ public class ChestUI : MonoBehaviour
         ChestInventory chestInv = currentChest.chestInventory;
         if (chestInv == null) return;
 
+        // ArraySlotOwner でチェストスロットを抽象化。
+        // onChanged は同期呼び出しすると dragIcon が残るバグになるため 1 フレーム遅延する。
+        currentChestOwner = new ArraySlotOwner(
+            chestInv.GetSlots(),
+            false,
+            null,
+            () => StartCoroutine(DelayedRefreshAll())
+        );
+
+        Inventory playerInventory = inventoryUI?.inventory ?? currentChest.playerInventory;
         Inventory.Slot[] slots = chestInv.GetSlots();
 
         for (int i = 0; i < slots.Length; i++)
@@ -130,54 +139,37 @@ public class ChestUI : MonoBehaviour
 
             Inventory.Slot slot = slots[i];
 
-            if (slot != null)
+            // ビジュアル設定
+            Image icon = FindChild<Image>(slotObj, "ItemIcon");
+            if (icon != null)
             {
-                Image icon = FindChild<Image>(slotObj, "ItemIcon");
-                if (icon != null)
-                {
-                    icon.sprite = slot.item?.icon;
-                    icon.color = slot.item?.icon != null ? Color.white : Color.clear;
-                }
-
-                TextMeshProUGUI amount = FindChild<TextMeshProUGUI>(slotObj, "AmountText");
-                if (amount != null)
-                    amount.text = slot.amount > 1 ? slot.amount.ToString() : "";
+                icon.sprite = slot?.item?.icon;
+                icon.color = (slot?.item?.icon != null) ? Color.white : Color.clear;
             }
-            else
-            {
-                Image icon = FindChild<Image>(slotObj, "ItemIcon");
-                if (icon != null) icon.color = Color.clear;
+            TextMeshProUGUI amount = FindChild<TextMeshProUGUI>(slotObj, "AmountText");
+            if (amount != null)
+                amount.text = slot != null ? slot.amount.ToString() : "";
 
-                TextMeshProUGUI amount = FindChild<TextMeshProUGUI>(slotObj, "AmountText");
-                if (amount != null) amount.text = "";
-            }
+            int capturedIndex = i;
 
-            // D&Dハンドラ
-            ChestDropHandler dropHandler = slotObj.AddComponent<ChestDropHandler>();
-            dropHandler.chestUI = this;
-            dropHandler.chestInventory = currentChest.chestInventory;
-            dropHandler.playerInventory = currentChest.playerInventory;
-            dropHandler.inventoryUI = inventoryUI;
-            dropHandler.targetSlot = slot;
-            dropHandler.targetIndex = i;
+            // ── ドロップハンドラ（インベントリ→チェスト、チェスト→チェスト）
+            MachineDropHandler drop = slotObj.AddComponent<MachineDropHandler>();
+            drop.Init(currentChestOwner, capturedIndex, playerInventory, inventoryUI);
 
-            // ドラッグハンドラ
-            ChestItemDragHandler dragHandler = slotObj.AddComponent<ChestItemDragHandler>();
-            dragHandler.chestUI = this;
-            dragHandler.chestInventory = currentChest.chestInventory;
-            dragHandler.playerInventory = currentChest.playerInventory;
-            dragHandler.inventoryUI = inventoryUI;
-            dragHandler.chestSlot = slot;
+            // ── ドラッグハンドラ（チェスト→どこへでも）
+            ItemDragHandler drag = slotObj.AddComponent<ItemDragHandler>();
+            drag.machineOwner = currentChestOwner;
+            drag.machineSlotIndex = capturedIndex;
+            drag.inventory = playerInventory;
+            drag.inventoryUI = inventoryUI;
 
-            // クリックハンドラ
-            ChestSlotClickHandler clickHandler = slotObj.AddComponent<ChestSlotClickHandler>();
-            clickHandler.chestUI = this;
-            clickHandler.chestInventory = currentChest.chestInventory;
-            clickHandler.playerInventory = currentChest.playerInventory;
-            clickHandler.inventoryUI = inventoryUI;
-            clickHandler.chestSlot = slot;
-            clickHandler.slotIndex = i;
+            // ── クリックハンドラ（DC：チェスト→インベントリ）
+            MachineSlotClickHandler click = slotObj.AddComponent<MachineSlotClickHandler>();
+            click.Init(currentChestOwner, capturedIndex, playerInventory, inventoryUI);
         }
+
+        // インベントリスロットにDCハンドラを追加（DC：インベントリ→チェスト）
+        inventoryUI?.AddMachineHandlers(currentChestOwner);
     }
 
     void ClearSlots()
@@ -185,6 +177,12 @@ public class ChestUI : MonoBehaviour
         foreach (var obj in slotObjects)
             if (obj != null) Destroy(obj);
         slotObjects.Clear();
+    }
+
+    System.Collections.IEnumerator DelayedRefreshAll()
+    {
+        yield return null;
+        RefreshAll();
     }
 
     T FindChild<T>(GameObject root, string name) where T : Component

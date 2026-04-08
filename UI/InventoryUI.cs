@@ -44,7 +44,6 @@ public class InventoryUI : MonoBehaviour
             }
             else
             {
-                // 他UIが開いていれば全部閉じてからインベントリを開く
                 if (UIManager.Instance != null) UIManager.Instance.OpenInventory();
                 else OpenInventory();
             }
@@ -212,7 +211,6 @@ public class InventoryUI : MonoBehaviour
                         if (child.name == "TankSlotGauge") { child.gameObject.SetActive(false); break; }
                 }
 
-                // クリックハンドラ
                 SlotClickHandler handler = slotObj.AddComponent<SlotClickHandler>();
                 handler.inventorySlot = slot;
                 handler.inventoryUI = this;
@@ -220,7 +218,6 @@ public class InventoryUI : MonoBehaviour
                 handler.inventory = inventory;
                 handler.splitWindowUI = splitWindowUI;
 
-                // ドラッグハンドラ
                 ItemDragHandler dragHandler = slotObj.AddComponent<ItemDragHandler>();
                 dragHandler.inventorySlot = slot;
                 dragHandler.inventory = inventory;
@@ -228,7 +225,6 @@ public class InventoryUI : MonoBehaviour
                 dragHandler.equipmentSystem = equipmentSystem;
                 dragHandler.equipmentUI = equipmentUI;
 
-                // ドロップハンドラ（アイテムあり）
                 DropHandler dropHandler = slotObj.AddComponent<DropHandler>();
                 dropHandler.targetSlot = slot;
                 dropHandler.targetIndex = i;
@@ -249,7 +245,6 @@ public class InventoryUI : MonoBehaviour
                 Image slotImage = slotObj.GetComponent<Image>();
                 if (slotImage != null) slotImage.raycastTarget = true;
 
-                // ドロップハンドラ（空スロット）
                 DropHandler dropHandler = slotObj.AddComponent<DropHandler>();
                 dropHandler.targetSlot = null;
                 dropHandler.targetIndex = i;
@@ -257,6 +252,9 @@ public class InventoryUI : MonoBehaviour
                 dropHandler.inventoryUI = this;
             }
         }
+
+        if (activeMachineOwner != null)
+            AddMachineHandlers(activeMachineOwner);
     }
 
     void SetGauge(Transform root, string gaugeName, float ratio, Color color)
@@ -282,26 +280,51 @@ public class InventoryUI : MonoBehaviour
         }
     }
 
-    public void AddIceMelterHandlers(IceMelter machine, IceMelterUI ui)
+    // -----------------------------------------------
+    // 機械UI用：インベントリスロットにDCハンドラを動的追加
+    // -----------------------------------------------
+
+    /// <summary>
+    /// 機械/チェストUI開放中に呼ぶ。インベントリスロットにDCハンドラを追加し
+    /// ダブルクリックで targetOwner へアイテムを移動できるようにする。
+    /// </summary>
+    private ISlotOwner activeMachineOwner;
+
+    public void AddMachineHandlers(ISlotOwner targetOwner)
     {
+        activeMachineOwner = targetOwner;
+        RemoveMachineHandlers(false);
         var slots = inventory.GetSlots();
         for (int i = 0; i < slotObjects.Count && i < slots.Length; i++)
         {
             if (slotObjects[i] == null) continue;
-            var handler = slotObjects[i].AddComponent<IceMelterInventorySlotClickHandler>();
-            handler.Init(machine, inventory, i, ui);
+            var handler = slotObjects[i].AddComponent<MachineInventoryClickHandler>();
+            handler.Init(targetOwner, inventory, i, this);
         }
     }
 
-    public void RemoveIceMelterHandlers()
+    public void RemoveMachineHandlers() => RemoveMachineHandlers(true);
+
+    void RemoveMachineHandlers(bool clearOwner)
     {
+        if (clearOwner) activeMachineOwner = null;
         foreach (var obj in slotObjects)
         {
             if (obj == null) continue;
-            var h = obj.GetComponent<IceMelterInventorySlotClickHandler>();
+            var h = obj.GetComponent<MachineInventoryClickHandler>();
             if (h != null) Destroy(h);
         }
     }
+
+    // 旧メソッド名との後方互換（IceMelter固有名称を汎用名に統合）
+    [System.Obsolete("AddMachineHandlers(ISlotOwner) を使用してください。")]
+    public void AddIceMelterHandlers(IceMelter machine, IceMelterUI ui)
+    {
+        // 旧コードとの互換用。新規コードでは AddMachineHandlers を使うこと。
+    }
+
+    [System.Obsolete("RemoveMachineHandlers() を使用してください。")]
+    public void RemoveIceMelterHandlers() => RemoveMachineHandlers();
 
     public void OpenInventoryExternalNoEquipment()
     {
@@ -309,7 +332,7 @@ public class InventoryUI : MonoBehaviour
         isOpen = true;
         lastSlotCount = inventory.GetSlots().Length;
         inventoryPanel.SetActive(true);
-        // equipmentUIは開かない
+        // equipmentUI は開かない
         if (splitWindowUI != null) splitWindowUI.gameObject.SetActive(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
