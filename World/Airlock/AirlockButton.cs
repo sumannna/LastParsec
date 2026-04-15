@@ -1,36 +1,58 @@
 using UnityEngine;
-using UnityEngine.UI;
 
 /// <summary>
-/// エアロック操作ボタン。船内側・船外側・エアロック内に設置する。
-/// ボタンのアクションタイプを設定し、Airlock に委譲する。
+/// エアロック操作ボタン。InteractionManager 経由で E キーにより操作する。
 /// </summary>
-public class AirlockButton : MonoBehaviour
+public class AirlockButton : MonoBehaviour, IInteractable
 {
-    public enum ActionType
-    {
-        Pressurize,   // 空気を入れる
-        Depressurize, // 空気を抜く
-    }
+    public enum ActionType { Pressurize, Depressurize }
 
     [Header("設定")]
     [SerializeField] private ActionType actionType;
     [SerializeField] private Airlock airlock;
-    [SerializeField] private float interactDistance = 2f;
 
-    [Header("参照")]
-    [SerializeField] private Transform playerTransform;
+    [Header("ハイライト")]
+    [SerializeField] private Renderer[] highlightRenderers;
+    [SerializeField] private Color highlightColor = new Color(0.4f, 0.4f, 0f, 1f);
 
-    void Update()
+    private static readonly int EmissionColorProp = Shader.PropertyToID("_EmissionColor");
+
+    void Start()
     {
-        if (!Input.GetKeyDown(KeyCode.E)) return;
-        if (airlock == null) return;
-        if (playerTransform != null &&
-            Vector3.Distance(playerTransform.position, transform.position) > interactDistance) return;
+        if (highlightRenderers == null || highlightRenderers.Length == 0)
+            highlightRenderers = GetComponentsInChildren<Renderer>();
+    }
 
-        if (actionType == ActionType.Pressurize)
-            airlock.RequestPressurize();
-        else
-            airlock.RequestDepressurize();
+    // -----------------------------------------------
+    // IInteractable
+    // -----------------------------------------------
+    public string InteractionLabel =>
+        actionType == ActionType.Pressurize ? "与圧 [E]" : "減圧 [E]";
+
+    public bool CanInteract => airlock != null;
+
+    public void Interact()
+    {
+        if (airlock == null) return;
+        if (actionType == ActionType.Pressurize) airlock.RequestPressurize();
+        else airlock.RequestDepressurize();
+    }
+
+    public void OnFocusEnter() => SetHighlight(highlightColor);
+    public void OnFocusExit() => SetHighlight(Color.black);
+
+    // -----------------------------------------------
+    // ハイライト
+    // -----------------------------------------------
+    void SetHighlight(Color color)
+    {
+        foreach (var r in highlightRenderers)
+        {
+            if (r == null) continue;
+            var mpb = new MaterialPropertyBlock();
+            r.GetPropertyBlock(mpb);
+            mpb.SetColor(EmissionColorProp, color);
+            r.SetPropertyBlock(mpb);
+        }
     }
 }

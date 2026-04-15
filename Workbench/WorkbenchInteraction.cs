@@ -1,74 +1,81 @@
 using UnityEngine;
 
 /// <summary>
-/// ワークベンチに付けるコンポーネント。
-/// - プレイヤーが1m以内 + Eキー → クラフトツリー画面を開く
-/// - CraftSystemからIsPlayerInRange()で距離判定に使用される
+/// ワークベンチインタラクト。
+/// 開く：InteractionManager 経由の E キー（範囲内のみ）。
+/// 閉じる：E キー（CraftTreeUI が開いているとき・範囲内のみ）。
 /// </summary>
 [RequireComponent(typeof(Collider))]
-public class WorkbenchInteraction : MonoBehaviour
+public class WorkbenchInteraction : MonoBehaviour, IInteractable
 {
-    [Header("WBレベル")]
+    [Header("WB レベル")]
     public WBLevel wbLevel = WBLevel.Lv1;
 
     [Header("インタラクト設定")]
-    [SerializeField] private float interactRange = 1f;  // 仕様：1m以内
+    [SerializeField] private float interactRange = 1f;
 
     [Header("参照")]
     [SerializeField] public Transform playerTransform;
 
-    // -----------------------------------------------
-    // 毎フレーム更新
-    // -----------------------------------------------
+    [Header("ハイライト")]
+    [SerializeField] private Renderer[] highlightRenderers;
+    [SerializeField] private Color highlightColor = new Color(0.4f, 0.4f, 0f, 1f);
+
+    private static readonly int EmissionColorProp = Shader.PropertyToID("_EmissionColor");
+
+    void Start()
+    {
+        if (highlightRenderers == null || highlightRenderers.Length == 0)
+            highlightRenderers = GetComponentsInChildren<Renderer>();
+    }
 
     void Update()
     {
         if (!IsPlayerInRange()) return;
+        if (!Input.GetKeyDown(KeyCode.E)) return;
 
-        if (Input.GetKeyDown(KeyCode.E))
-        {
-            if (ChestUI.Instance != null && (ChestUI.Instance.IsOpen || ChestUI.Instance.ClosedThisFrame)) return;
-            if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen)
-                CraftTreeUI.Instance.Close();
-            else if (UIManager.Instance == null || (!UIManager.Instance.IsAnyUIOpen()))
-                OpenCraftTree();
-        }
+        if (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen)
+            CraftTreeUI.Instance.Close();
     }
 
     // -----------------------------------------------
-    // 公開API
+    // IInteractable
     // -----------------------------------------------
+    public string InteractionLabel => "クラフト [E]";
+    public bool CanInteract => CraftTreeUI.Instance == null || !CraftTreeUI.Instance.IsOpen;
 
-    /// <summary>
-    /// プレイヤーがWBの有効範囲内にいるか判定する。
-    /// CraftSystemが毎フレーム呼ぶ。
-    /// </summary>
+    public void Interact()
+    {
+        if (UIManager.Instance == null || UIManager.Instance.IsAnyUIOpen()) return;
+        UIManager.Instance.OpenCraftTree(this);
+    }
+
+    public void OnFocusEnter() => SetHighlight(highlightColor);
+    public void OnFocusExit() => SetHighlight(Color.black);
+
+    // -----------------------------------------------
+    // 範囲判定（CraftSystem から毎フレーム呼ばれる）
+    // -----------------------------------------------
     public bool IsPlayerInRange()
     {
         if (playerTransform == null) return false;
-        float dist = Vector3.Distance(playerTransform.position, transform.position);
-        return dist <= interactRange;
+        return Vector3.Distance(playerTransform.position, transform.position) <= interactRange;
     }
 
     // -----------------------------------------------
-    // 内部処理
+    // ハイライト
     // -----------------------------------------------
-
-    private void OpenCraftTree()
+    void SetHighlight(Color color)
     {
-        Debug.Log($"[WorkbenchInteraction] クラフトツリーを開く WBLevel:{wbLevel}");
-
-        if (UIManager.Instance != null)
-            UIManager.Instance.OpenCraftTree(this);
-        else if (CraftTreeUI.Instance != null)
-            CraftTreeUI.Instance.Open(this);
-        else
-            Debug.LogWarning("[WorkbenchInteraction] CraftTreeUIが見つかりません");
+        foreach (var r in highlightRenderers)
+        {
+            if (r == null) continue;
+            var mpb = new MaterialPropertyBlock();
+            r.GetPropertyBlock(mpb);
+            mpb.SetColor(EmissionColorProp, color);
+            r.SetPropertyBlock(mpb);
+        }
     }
-
-    // -----------------------------------------------
-    // Gizmo（Scene上で範囲を可視化）
-    // -----------------------------------------------
 
 #if UNITY_EDITOR
     void OnDrawGizmosSelected()

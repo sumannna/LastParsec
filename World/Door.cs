@@ -2,25 +2,27 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 横スライドドア。
-/// 範囲内でEキーを押すたびに開閉トグルする。
+/// 横スライドドア。InteractionManager 経由で E キーによりトグル開閉する。
+/// playerTransform の参照は不要になったため削除済み。
 /// </summary>
-public class Door : MonoBehaviour
+public class Door : MonoBehaviour, IInteractable
 {
     [Header("設定")]
-    [SerializeField] private float interactRange = 2f;
     [SerializeField] private float openDuration = 0.5f;
     [SerializeField] private Vector3 openOffset = new Vector3(2f, 0f, 0f);
     [SerializeField] private bool startOpen = false;
 
-    [Header("参照")]
-    [SerializeField] private Transform playerTransform;
+    [Header("ハイライト")]
+    [SerializeField] private Renderer[] highlightRenderers;
+    [SerializeField] private Color highlightColor = new Color(0.4f, 0.4f, 0f, 1f);
 
     public bool IsOpen { get; private set; } = false;
     public bool IsMoving { get; private set; } = false;
 
     private Vector3 closedLocalPos;
     private Vector3 openLocalPos;
+
+    private static readonly int EmissionColorProp = Shader.PropertyToID("_EmissionColor");
 
     void Start()
     {
@@ -32,22 +34,29 @@ public class Door : MonoBehaviour
             transform.localPosition = openLocalPos;
             IsOpen = true;
         }
+
+        if (highlightRenderers == null || highlightRenderers.Length == 0)
+            highlightRenderers = GetComponentsInChildren<Renderer>();
     }
 
-    void Update()
-    {
-        if (!IsPlayerInRange()) return;
-        if (!Input.GetKeyDown(KeyCode.E)) return;
-        if (UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen()) return;
+    // -----------------------------------------------
+    // IInteractable
+    // -----------------------------------------------
+    public string InteractionLabel => IsOpen ? "閉じる [E]" : "開く [E]";
+    public bool CanInteract => !IsMoving;
 
-        Toggle();
-    }
+    public void Interact() => Toggle();
 
+    public void OnFocusEnter() => SetHighlight(highlightColor);
+    public void OnFocusExit() => SetHighlight(Color.black);
+
+    // -----------------------------------------------
+    // 開閉
+    // -----------------------------------------------
     void Toggle()
     {
         if (IsMoving) return;
-        if (IsOpen) StartCoroutine(Slide(false));
-        else StartCoroutine(Slide(true));
+        StartCoroutine(Slide(!IsOpen));
     }
 
     IEnumerator Slide(bool opening)
@@ -69,17 +78,24 @@ public class Door : MonoBehaviour
         IsMoving = false;
     }
 
-    bool IsPlayerInRange()
+    // -----------------------------------------------
+    // ハイライト
+    // -----------------------------------------------
+    void SetHighlight(Color color)
     {
-        if (playerTransform == null) return false;
-        return Vector3.Distance(playerTransform.position, transform.position) <= interactRange;
+        foreach (var r in highlightRenderers)
+        {
+            if (r == null) continue;
+            var mpb = new MaterialPropertyBlock();
+            r.GetPropertyBlock(mpb);
+            mpb.SetColor(EmissionColorProp, color);
+            r.SetPropertyBlock(mpb);
+        }
     }
 
 #if UNITY_EDITOR
     void OnDrawGizmosSelected()
     {
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, interactRange);
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireCube(transform.position + openOffset, transform.lossyScale);
     }
