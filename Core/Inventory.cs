@@ -28,16 +28,11 @@ public class Inventory : MonoBehaviour
 
             if (item == null) return;
 
-            if (item is OxygenTankData tankData)
-                tankInstance = new OxygenTankInstance(tankData);
-            if (item is ThrusterTankData thrusterData)
-                thrusterInstance = new ThrusterTankInstance(thrusterData);
-            if (item is SpacesuitData spacesuitData)
-                spacesuitInstance = new SpacesuitInstance(spacesuitData);
-            if (item is ToolData toolData)
-                toolInstance = new ToolInstance(toolData);
-            if (item is WaterTankData waterTankData)
-                waterTankInstance = new WaterTankInstance(waterTankData);
+            if (item is OxygenTankData tankData) tankInstance = new OxygenTankInstance(tankData);
+            if (item is ThrusterTankData thrusterData) thrusterInstance = new ThrusterTankInstance(thrusterData);
+            if (item is SpacesuitData spacesuitData) spacesuitInstance = new SpacesuitInstance(spacesuitData);
+            if (item is ToolData toolData) toolInstance = new ToolInstance(toolData);
+            if (item is WaterTankData waterTankData) waterTankInstance = new WaterTankInstance(waterTankData);
         }
     }
 
@@ -115,27 +110,23 @@ public class Inventory : MonoBehaviour
     /// <summary>
     /// スロットをインベントリに配置する。
     /// preferredIndex が空いていればそこへ、なければスタック→空きスロットの順で配置。
-    /// Drag開始時に配列から除去されたスロットのDrop失敗時復元や、マージ後の残余アイテム配置に使用。
     /// </summary>
     public void PlaceSlotInInventory(Slot slot, int preferredIndex)
     {
         if (slot == null || slot.item == null || slot.amount <= 0) return;
 
-        // 優先インデックスが空いていればそこへ
         if (preferredIndex >= 0 && preferredIndex < slotCount && slots[preferredIndex] == null)
         {
             slots[preferredIndex] = slot;
             return;
         }
 
-        // インスタンス系（OxygenTank等）はスタック不可 → 空きスロットへ直接
         bool hasInstance = slot.tankInstance != null || slot.thrusterInstance != null
                         || slot.spacesuitInstance != null || slot.waterTankInstance != null
                         || slot.toolInstance != null;
 
         if (!hasInstance)
         {
-            // 既存スロットにスタック
             for (int i = 0; i < slotCount && slot.amount > 0; i++)
             {
                 if (slots[i] != null && slots[i].item == slot.item
@@ -149,13 +140,11 @@ public class Inventory : MonoBehaviour
             }
         }
 
-        // 残余を空きスロットへ
         if (slot.amount > 0)
         {
             int emptyIdx = GetFirstEmptyIndex();
             if (emptyIdx >= 0)
                 slots[emptyIdx] = slot;
-            // インベントリが満杯の場合はアイテムが消失（マルチプレイ時の競合による例外ケース）
         }
     }
 
@@ -170,17 +159,14 @@ public class Inventory : MonoBehaviour
 
         if (indexA >= 0 && indexB >= 0)
         {
-            // 両方配列内：通常スワップ
             slots[indexA] = b;
             slots[indexB] = a;
         }
         else if (indexA < 0 && indexB >= 0)
         {
-            // 'a' が配列外（Drag開始時に除去済み）：aをbの位置に、bは空き探して配置
             slots[indexB] = a;
             PlaceSlotInInventory(b, -1);
         }
-        // indexB < 0 は通常発生しない（ドロップ先は常に配列内）
     }
 
     public void MoveSlotToIndex(Slot slot, int targetIndex)
@@ -198,7 +184,6 @@ public class Inventory : MonoBehaviour
             }
         }
 
-        // 配列外（Drag開始時に除去済み）：直接配置
         slots[targetIndex] = slot;
     }
 
@@ -258,10 +243,6 @@ public class Inventory : MonoBehaviour
         return true;
     }
 
-    // -----------------------------------------------
-    // スタック操作
-    // -----------------------------------------------
-
     public void ReduceSlot(Slot slot, int reduction)
     {
         if (slot == null) return;
@@ -271,8 +252,7 @@ public class Inventory : MonoBehaviour
     }
 
     /// <summary>
-    /// sourceのdragAmount個をtargetへマージ。
-    /// sourceが配列外（Drag開始時に除去済み）の場合でも正しくamountを減算する。
+    /// source の dragAmount 個を target へマージ。
     /// 戻り値：移動できなかった残余個数。
     /// </summary>
     public int MergeIntoSlot(Slot source, int dragAmount, Slot target)
@@ -281,11 +261,7 @@ public class Inventory : MonoBehaviour
         int space = target.item.maxStack - target.amount;
         int toAdd = Mathf.Min(dragAmount, space);
         target.amount += toAdd;
-
-        // ReduceSlot はオブジェクトのamountを直接減算するため、
-        // sourceが配列外でも amount は正しく減算される（RemoveSlotは空振りするだけ）
         ReduceSlot(source, toAdd);
-
         return dragAmount - toAdd;
     }
 
@@ -314,6 +290,31 @@ public class Inventory : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 指定アイテムを指定個数追加できるか事前に確認する。
+    /// 既存スタックの空きと空スロットを合算して判定する。
+    /// </summary>
+    public bool HasSpaceFor(ItemData item, int amount)
+    {
+        int remaining = amount;
+
+        // 既存スタックの空きを先に消費
+        for (int i = 0; i < slotCount && remaining > 0; i++)
+        {
+            if (slots[i] != null && slots[i].item == item && slots[i].amount < item.maxStack)
+                remaining -= (item.maxStack - slots[i].amount);
+        }
+        if (remaining <= 0) return true;
+
+        // 空スロットで補う
+        for (int i = 0; i < slotCount && remaining > 0; i++)
+        {
+            if (slots[i] == null)
+                remaining -= item.maxStack;
+        }
+        return remaining <= 0;
+    }
+
     public bool SplitSlotToIndex(Slot source, int splitAmount, int targetIndex)
     {
         if (source == null || splitAmount <= 0 || splitAmount > source.amount) return false;
@@ -340,10 +341,7 @@ public class Inventory : MonoBehaviour
 
     public Slot[] GetSlots() => slots;
 
-    public bool IsFull()
-    {
-        return GetFirstEmptyIndex() < 0;
-    }
+    public bool IsFull() => GetFirstEmptyIndex() < 0;
 
     public int GetAmount(ItemData item)
     {
