@@ -353,4 +353,17 @@ public class Inventory : MonoBehaviour
         }
         return total;
     }
+
+    public void RemoveItemAmount(ItemData item, int amount)
+    {
+        int remaining = amount;
+        for (int i = 0; i < slotCount && remaining > 0; i++)
+        {
+            if (slots[i] == null || slots[i].item != item) continue;
+            int take = Mathf.Min(slots[i].amount, remaining);
+            slots[i].amount -= take;
+            remaining -= take;
+            if (slots[i].amount <= 0) slots[i] = null;
+        }
+    }
 }

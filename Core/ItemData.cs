@@ -25,6 +25,7 @@ public enum ItemType
 
     // 道具（100〜）
     Tool = 100,
+    Toolkit = 101,
 
     // 消耗品（150〜）
     Consumable = 150,
@@ -37,6 +38,8 @@ public enum ItemType
 
     // 水タンク（400〜）
     WaterTank = 400,
+
+    
 }
 
 public enum ItemCategory
