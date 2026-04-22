@@ -31,6 +31,10 @@ public class PlayerController : MonoBehaviour
     public float crouchHeight = 0.5f;
     public float standHeight = 2f;
 
+    // GravityZone管理
+    private GravityZone currentGravityZone = null;
+    private Vector3 currentGravityDir = Vector3.down;
+
     void Start()
     {
         Application.targetFrameRate = 144;
@@ -67,9 +71,8 @@ public class PlayerController : MonoBehaviour
         bool isDead = (oxygenSystem != null && oxygenSystem.IsGameOver)
                    || (vitalSystem != null && vitalSystem.IsDead);
 
-        bool inventoryOpen = (inventoryUI != null && inventoryUI.IsOpen)
-          || (CraftUI.Instance != null && CraftUI.Instance.IsOpen)
-          || (CraftTreeUI.Instance != null && CraftTreeUI.Instance.IsOpen);
+        bool inventoryOpen = (UIManager.Instance != null && UIManager.Instance.IsAnyUIOpen())
+                  || (RadialMenuUI.Instance != null && RadialMenuUI.Instance.IsOpen);
 
         float mouseX = Input.GetAxisRaw("Mouse X") * mouseSensitivity;
         float mouseY = Input.GetAxisRaw("Mouse Y") * mouseSensitivity;
@@ -83,7 +86,8 @@ public class PlayerController : MonoBehaviour
             transform.Rotate(Vector3.up * mouseX);
         }
 
-        bool hasGravity = EnvironmentSystem.Instance != null && EnvironmentSystem.Instance.HasCentrifugalGravity;
+        bool hasGravity = (EnvironmentSystem.Instance != null && EnvironmentSystem.Instance.HasCentrifugalGravity)
+               || currentGravityZone != null;
 
         if (hasGravity)
         {
@@ -115,10 +119,17 @@ public class PlayerController : MonoBehaviour
                 velocity.z = 0f;
             }
 
-            if (controller.isGrounded && velocity.y < 0f)
-                velocity.y = -2f;
+            float gStrength = currentGravityZone != null
+                ? currentGravityZone.GravityStrength
+                : gravityStrength;
+            Vector3 gDir = currentGravityZone != null
+                ? currentGravityZone.GravityDirection
+                : Vector3.down;
+
+            if (controller.isGrounded && Vector3.Dot(velocity, gDir) > 0f)
+                velocity = Vector3.ProjectOnPlane(velocity, gDir) + gDir * 0.02f;
             else
-                velocity.y -= gravityStrength * Time.deltaTime;
+                velocity += gDir * gStrength * Time.deltaTime;
         }
         else
         {
@@ -194,6 +205,26 @@ public class PlayerController : MonoBehaviour
             controller.enabled = false;
             transform.position = new Vector3(0f, 0f, 0f);
             controller.enabled = true;
+        }
+    }
+
+    // -----------------------------------------------
+    // GravityZone入退場
+    // -----------------------------------------------
+    public void EnterGravityZone(GravityZone zone)
+    {
+        currentGravityZone = zone;
+        currentGravityDir = zone.GravityDirection;
+        Debug.Log($"[PlayerController] 重力ゾーン入場: {zone.GravityDirection}");
+    }
+
+    public void ExitGravityZone(GravityZone zone)
+    {
+        if (currentGravityZone == zone)
+        {
+            currentGravityZone = null;
+            currentGravityDir = Vector3.down;
+            Debug.Log("[PlayerController] 重力ゾーン退場");
         }
     }
 }

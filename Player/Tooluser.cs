@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// ホットバー選択中のアイテムを左クリックで使用するシステム。
-/// ToolInstanceはHotbar.Slotに保持されるため、スロット移動でも耐久値が引き継がれる。
+/// ToolInstance は Hotbar.Slot に保持されるため、スロット移動でも耐久値が引き継がれる。
 /// </summary>
 public class ToolUser : MonoBehaviour
 {
@@ -49,7 +49,6 @@ public class ToolUser : MonoBehaviour
 
     void UsePick(PickaxeData pickaxe, int slotIndex, Hotbar.Slot hotbarSlot)
     {
-        // ToolInstanceがなければ初回生成（インベントリ経由で来た場合は引き継ぎ済みのはず）
         if (hotbarSlot.toolInstance == null)
         {
             hotbarSlot.toolInstance = new ToolInstance(pickaxe);
@@ -84,13 +83,20 @@ public class ToolUser : MonoBehaviour
         Debug.Log($"[ToolUser] ヒット: {hit.collider.gameObject.name} / layer={LayerMask.LayerToName(hit.collider.gameObject.layer)}");
 
         MiningTarget target = hit.collider.GetComponent<MiningTarget>();
-        if (target == null)
+        if (target != null)
         {
-            Debug.LogWarning($"[ToolUser] {hit.collider.gameObject.name} に MiningTarget がない");
-            return;
+            target.TakeMiningDamage(pickaxe.miningDamage);
         }
-
-        target.TakeMiningDamage(pickaxe.miningDamage);
+        else
+        {
+            DebrisObject debris = hit.collider.GetComponent<DebrisObject>();
+            if (debris == null)
+            {
+                Debug.LogWarning($"[ToolUser] {hit.collider.gameObject.name} に MiningTarget も DebrisObject もない");
+                return;
+            }
+            debris.TakeMiningHit(inventory, inventoryUI);
+        }
 
         bool broken = inst.ConsumeOnUse();
         Debug.Log($"[ToolUser] 耐久消費後: {inst.currentDurability}/{pickaxe.maxDurability} / broken={broken}");
@@ -132,7 +138,7 @@ public class ToolUser : MonoBehaviour
     }
 
     // -----------------------------------------------
-    // ユーティリティ
+    // 水タンク使用
     // -----------------------------------------------
 
     void UseWaterTank(Hotbar.Slot hotbarSlot)
@@ -146,9 +152,6 @@ public class ToolUser : MonoBehaviour
         WaterTankData tankData = hotbarSlot.item as WaterTankData;
         if (tankData == null) return;
 
-        // ToolInstanceからWaterTankInstanceを取得
-        // HotbarにWaterTankInstanceを持たせるため、ToolInstanceを流用せず
-        // Inventoryスロットから参照する
         Inventory.Slot invSlot = FindItemSlot(tankData);
         if (invSlot == null || invSlot.waterTankInstance == null)
         {
@@ -178,6 +181,10 @@ public class ToolUser : MonoBehaviour
         if (hotbarUI != null)
             hotbarUI.RefreshAll();
     }
+
+    // -----------------------------------------------
+    // ユーティリティ
+    // -----------------------------------------------
 
     Inventory.Slot FindItemSlot(ItemData item)
     {

@@ -14,7 +14,6 @@ public class InteractionPromptUI : MonoBehaviour
 
     public void Show(string text)
     {
-        Debug.Log($"[PromptUI] Show: {text} / panel={panel != null} / label={label != null}");
         if (panel != null) panel.SetActive(true);
         if (label != null) label.text = text;
     }
