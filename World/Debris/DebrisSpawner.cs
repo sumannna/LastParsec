@@ -130,7 +130,7 @@ public class DebrisSpawner : MonoBehaviour
         DebrisObject debris = obj.GetComponent<DebrisObject>();
         if (debris == null)
         {
-            Debug.LogError($"[DebrisSpawner] {debrisData.worldPrefab.name} に DebrisObject がアタッチされていません");
+            //Debug.LogError($"[DebrisSpawner] {debrisData.worldPrefab.name} に DebrisObject がアタッチされていません");
             Destroy(obj);
             return;
         }
@@ -141,7 +141,7 @@ public class DebrisSpawner : MonoBehaviour
         tracker.Init(this);
 
         currentCount++;
-        Debug.Log($"[DebrisSpawner] {debrisData.debrisName} をスポーン（現在 {currentCount}/{maxDebrisCount}）");
+        //Debug.Log($"[DebrisSpawner] {debrisData.debrisName} をスポーン（現在 {currentCount}/{maxDebrisCount}）");
     }
 
     // -----------------------------------------------

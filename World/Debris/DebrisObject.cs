@@ -151,7 +151,8 @@ public class DebrisObject : MonoBehaviour, IInteractable
     // -----------------------------------------------
     void OnCollisionEnter(Collision collision)
     {
-        flightDir = Vector3.Reflect(flightDir, collision.contacts[0].normal);
+        if (collision.gameObject.CompareTag("Ship"))
+            Destroy(gameObject);
     }
 
     // -----------------------------------------------

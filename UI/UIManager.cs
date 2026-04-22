@@ -34,6 +34,7 @@ public class UIManager : MonoBehaviour
         var tables = FindObjectsOfType<ResearchTableSystem>();
         foreach (var table in tables)
             if (table != null && table.IsOpen) table.ClosePanel();
+        RadialMenuUI.Instance?.Close();
     }
 
     public bool IsAnyUIOpen()
@@ -46,6 +47,7 @@ public class UIManager : MonoBehaviour
         if (FillingMachineUI.Instance != null && FillingMachineUI.Instance.IsOpen) return true;
         if (ElectrolyzerUI.Instance != null && ElectrolyzerUI.Instance.IsOpen) return true;
         if (HandCrankerUI.Instance != null && HandCrankerUI.Instance.IsOpen) return true;
+        if (RadialMenuUI.Instance != null && RadialMenuUI.Instance.IsOpen) return true;
         var tables = FindObjectsOfType<ResearchTableSystem>();
         foreach (var table in tables)
             if (table != null && table.IsOpen) return true;
