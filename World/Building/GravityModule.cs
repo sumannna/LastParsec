@@ -29,6 +29,8 @@ public class GravityModule : SpaceModule
 
     void Update()
     {
+        // BuildingToolkitが建築モード中（壁・階段のRキー回転）はスキップ
+        if (BuildingToolkit.Instance != null && BuildingToolkit.Instance.IsBuildMode) return;
         if (Input.GetKeyDown(KeyCode.R))
             CycleFace();
     }

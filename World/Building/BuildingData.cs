@@ -25,4 +25,5 @@ public enum BuildingType
     GravityModule,
     PartitionWall,
     Staircase,
+    HalfWall,
 }

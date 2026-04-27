@@ -13,19 +13,22 @@ public class BuildingPreview : MonoBehaviour
     private GameObject previewInstance;
     private Renderer[] previewRenderers;
     private bool isValid;
+    private GameObject currentPrefab;
 
     public bool IsValid => isValid;
 
     // -----------------------------------------------
     // プレビュー表示
     // -----------------------------------------------
-    public void Show(GameObject prefab, Vector3 worldPos, bool valid)
+    public void Show(GameObject prefab, Vector3 worldPos, bool valid, Quaternion rotation = default)
     {
-        if (previewInstance == null)
+        // prefabが未生成、または選択建築物が切り替わった場合は再生成
+        if (previewInstance == null || currentPrefab != prefab)
             CreatePreview(prefab);
 
         previewInstance.SetActive(true);
         previewInstance.transform.position = worldPos;
+        previewInstance.transform.rotation = rotation;
 
         if (valid != isValid)
         {
@@ -49,8 +52,9 @@ public class BuildingPreview : MonoBehaviour
             Destroy(previewInstance);
 
         previewInstance = Instantiate(prefab);
+        currentPrefab = prefab;   // 現在のprefabを記録
 
-        // Collider・スクリプトを無効化（プレビュー専用にする）
+        // Collider・スクリプトを無効化(プレビュー専用にする)
         foreach (var col in previewInstance.GetComponentsInChildren<Collider>())
             col.enabled = false;
         foreach (var mb in previewInstance.GetComponentsInChildren<MonoBehaviour>())

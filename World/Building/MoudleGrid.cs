@@ -9,13 +9,16 @@ public class ModuleGrid : MonoBehaviour
 {
     public static ModuleGrid Instance { get; private set; }
 
-    public const float CellSize = 5f;
+    public const float CellSize = 2f;
 
     // グリッド座標 -> 空間モジュール
     private Dictionary<Vector3Int, SpaceModule> grid = new Dictionary<Vector3Int, SpaceModule>();
 
     // グリッド原点（デフォルト空間モジュールのワールド位置）
     private Vector3 gridOrigin;
+
+    // 壁2mスナップ計算用に公開
+    public Vector3 GridOrigin => gridOrigin;
 
     // HUD方向（Zマイナス）は建築禁止
     // 原点セル(0,0,0)はデフォルトモジュールなので建築禁止のZマイナス側とは Z < 0
@@ -38,9 +41,12 @@ public class ModuleGrid : MonoBehaviour
     // -----------------------------------------------
     // 初期化
     // -----------------------------------------------
+    public bool IsOriginSet { get; private set; }
+
     public void SetOrigin(Vector3 origin)
     {
         gridOrigin = origin;
+        IsOriginSet = true;
     }
 
     // -----------------------------------------------

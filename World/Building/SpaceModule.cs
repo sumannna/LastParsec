@@ -36,31 +36,43 @@ public class SpaceModule : MonoBehaviour
     /// <summary>デフォルトモジュール（原点）用。Startで自動登録する</summary>
     void Start()
     {
-        if (!isDefault) return;
         if (ModuleGrid.Instance == null)
         {
             Debug.LogError("[SpaceModule] ModuleGrid が見つかりません。実行順を確認してください。");
             return;
         }
-        Debug.Log($"[SpaceModule] gridOrigin を {transform.position} に設定");
-        ModuleGrid.Instance.SetOrigin(transform.position);
-        GridCell = Vector3Int.zero;
-        ModuleGrid.Instance.RegisterModule(Vector3Int.zero, this);
-        RefreshWalls();
-        AddOxygenZone();
+
+        if (isDefault)
+        {
+            // SetOriginは原点モジュール（cell=(0,0,0)）のみ呼ぶ
+            if (!ModuleGrid.Instance.IsOriginSet)
+            {
+                Debug.Log($"[SpaceModule] gridOrigin を {transform.position} に設定");
+                ModuleGrid.Instance.SetOrigin(transform.position);
+                GridCell = Vector3Int.zero;
+            }
+            else
+            {
+                // 2個目以降のisDefaultモジュール：原点からの相対セルを計算
+                GridCell = ModuleGrid.Instance.WorldToGrid(transform.position);
+            }
+            ModuleGrid.Instance.RegisterModule(GridCell, this);
+            RefreshWalls();
+            AddOxygenZone();
+        }
     }
 
-    // -----------------------------------------------
-    // OxygenZone追加
-    // -----------------------------------------------
-    void AddOxygenZone()
+        // -----------------------------------------------
+        // OxygenZone追加
+        // -----------------------------------------------
+        void AddOxygenZone()
     {
         // 既にあれば追加しない
         if (GetComponent<OxygenZone>() != null) return;
 
         var col = gameObject.AddComponent<BoxCollider>();
         col.isTrigger = true;
-        col.size = Vector3.one * (ModuleGrid.CellSize - 0.1f); // 壁厚分だけ小さく
+        col.size = Vector3.one * (ModuleGrid.CellSize - 0.1f);
         gameObject.AddComponent<OxygenZone>();
     }
 
@@ -77,6 +89,35 @@ public class SpaceModule : MonoBehaviour
         SetWall(wallNegY, !ModuleGrid.Instance.HasModule(GridCell + Vector3Int.down));
         SetWall(wallPosZ, !ModuleGrid.Instance.HasModule(GridCell + new Vector3Int(0, 0, 1)));
         SetWall(wallNegZ, !ModuleGrid.Instance.HasModule(GridCell + new Vector3Int(0, 0, -1)));
+    }
+
+    // -----------------------------------------------
+    // 指定方向の壁Rendererを返す（ハイライト用）
+    // -----------------------------------------------
+    public Renderer GetWallRenderer(Vector3Int direction)
+    {
+        string wallName = DirectionToWallName(direction);
+        Debug.Log($"[GetWallRenderer] direction={direction} wallName={wallName}");
+        if (wallName == null) { Debug.Log("[GetWallRenderer] wallName null"); return null; }
+
+        Transform wallTransform = transform.Find(wallName);
+        Debug.Log($"[GetWallRenderer] wallTransform={wallTransform}");
+        if (wallTransform == null) { Debug.Log($"[GetWallRenderer] {wallName} not found in {gameObject.name}"); return null; }
+
+        Renderer r = wallTransform.GetComponent<Renderer>();
+        Debug.Log($"[GetWallRenderer] Renderer={r}");
+        return r;
+    }
+
+    string DirectionToWallName(Vector3Int dir)
+    {
+        if (dir == Vector3Int.right) return "Wall_PosX";
+        if (dir == Vector3Int.left) return "Wall_NegX";
+        if (dir == Vector3Int.up) return "Wall_PosY";
+        if (dir == Vector3Int.down) return "Wall_NegY";
+        if (dir == Vector3Int.forward) return "Wall_PosZ";
+        if (dir == Vector3Int.back) return "Wall_NegZ";
+        return null;
     }
 
     void SetWall(GameObject wall, bool visible)
